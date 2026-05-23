@@ -1,0 +1,6 @@
+{
+  "name": "Bazodiac Scenario Lab",
+  "description": "An adaptive reflective cockpit for astrologically calibrated pattern awareness, showing scenario branches, seven hypotheses constellations, and structural coherence path structures.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
