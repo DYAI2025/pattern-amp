@@ -29,6 +29,12 @@ import {
   MOCK_PATTERN_MEMORY 
 } from './data/mockData';
 
+import { 
+  fetchLiveDataset, 
+  uploadAllBaselineAspects, 
+  isSupabaseConfigured 
+} from './lib/supabase';
+
 // Component Imports
 import ScenarioFan from './components/scenario/ScenarioFan';
 import ScenarioControlPanel from './components/scenario/ScenarioControlPanel';
@@ -42,6 +48,9 @@ import DataProvenanceDrawer from './components/scenario/DataProvenanceDrawer';
 import EpistemicStatusStrip from './components/scenario/EpistemicStatusStrip';
 import ScenarioSeedPreview from './components/scenario/ScenarioSeedPreview';
 import PatternAmplifierView from './components/scenario/PatternAmplifierView';
+import SupabaseManager from './components/scenario/SupabaseManager';
+import UserLoader from './components/scenario/UserLoader';
+import { UserPatternState } from './components/scenario/branchGrowthEngine';
 
 export default function App() {
   // Scenario & cockpit configuration State
@@ -60,7 +69,143 @@ export default function App() {
   const [isSimulating, setIsSimulating] = useState(false);
   const [simulationLogs, setSimulationLogs] = useState<string[]>([]);
   const [userQuestion, setUserQuestion] = useState('');
+
+  // Live Syncing databases states & tables mapping
   const [activeBranchList, setActiveBranchList] = useState<ScenarioBranch[]>(MOCK_BRANCHES);
+  const [activeHypotheses, setActiveHypotheses] = useState(MOCK_HYPOTHESES);
+  const [activeNatalInfluences, setActiveNatalInfluences] = useState(MOCK_NATAL_INFLUENCES);
+  const [activeAgentReflections, setActiveAgentReflections] = useState(MOCK_AGENT_REFLECTIONS);
+
+  // Standalone test-mode user context states
+  const [activeUserId, setActiveUserId] = useState<string | null>(null);
+  const [activeUserData, setActiveUserData] = useState<any | null>(null);
+  const [userPatternState, setUserPatternState] = useState<UserPatternState | null>(null);
+
+  const handleUserLoaded = (userData: any, patternState: UserPatternState | null) => {
+    setActiveUserId(userData.activeUserId);
+    setActiveUserData(userData);
+    setUserPatternState(patternState);
+
+    // If active user profile elements contain custom data, enrich active elements dynamically
+    if (userData.natalCharts && userData.natalCharts.length > 0) {
+      const dynamicInfluences = userData.natalCharts.map((chart: any, i: number) => ({
+        id: chart.id || `dynamic-nat-${i}`,
+        symbol: chart.symbol || '✦',
+        label: chart.label || `Chart Node ${String(chart.id).slice(0, 5)}`,
+        category: chart.category || 'Western Astrological',
+        strength: chart.strength || 'high',
+        explanation: chart.explanation || `Dynamically synchronized user natal factor: ${chart.sign_name || 'Astro placement'} at ${chart.degree || '15'}°, influencing calibration elements.`
+      }));
+      setActiveNatalInfluences(dynamicInfluences);
+    }
+
+    if (userData.eveData?.eveHypotheses && userData.eveData.eveHypotheses.length > 0) {
+      const customHyps = userData.eveData.eveHypotheses.map((h: any, i: number) => ({
+        id: h.id || `hyp-dyn-${i}`,
+        title: h.title || `Hypothesis ${String(h.id).slice(0, 5)}`,
+        statement: h.statement || 'Dynamic user statement query tracking',
+        confidence: Number(h.confidence) || 75,
+        activation: Number(h.activation) || 60,
+        status: h.status || 'active',
+        evidence: h.evidence || 'Loaded via active customer database index',
+        counterEvidence: h.counter_evidence || 'Skeptic review pending',
+        sourceMix: h.source_mix || 'User custom',
+        relatedScenarioBranches: h.related_scenario_branches || [],
+        lastUpdated: h.last_updated || new Date().toISOString()
+      }));
+      setActiveHypotheses(customHyps);
+    }
+  };
+
+  const handleClearUser = () => {
+    setActiveUserId(null);
+    setActiveUserData(null);
+    setUserPatternState(null);
+    setActiveBranchList(MOCK_BRANCHES);
+    setActiveHypotheses(MOCK_HYPOTHESES);
+    setActiveNatalInfluences(MOCK_NATAL_INFLUENCES);
+    setActiveAgentReflections(MOCK_AGENT_REFLECTIONS);
+  };
+
+  // Supabase states
+  const [isMockDeactivated, setIsMockDeactivated] = useState<boolean>(false);
+  const [isUploadingDB, setIsUploadingDB] = useState<boolean>(false);
+  const [isFetchingDB, setIsFetchingDB] = useState<boolean>(false);
+  const [dbLogs, setDbLogs] = useState<string>('');
+
+  // Toggle live data deactivation of mockup
+  const handleToggleMockMode = async (deactivate: boolean) => {
+    if (!deactivate) {
+      // Revert to mocks
+      setDbLogs(`Restoring local mockup playground default dataset...\n`);
+      setActiveBranchList(MOCK_BRANCHES);
+      setActiveHypotheses(MOCK_HYPOTHESES);
+      setActiveNatalInfluences(MOCK_NATAL_INFLUENCES);
+      setActiveAgentReflections(MOCK_AGENT_REFLECTIONS);
+      setIsMockDeactivated(false);
+      setDbLogs(prev => prev + `[STATUS] Local mockup data successfully restored.`);
+      return;
+    }
+
+    // Deactivating mock data -> Load live from database
+    setIsFetchingDB(true);
+    setDbLogs(`Acquiring dynamic telemetry from remote Supabase schema...\n`);
+    try {
+      const data = await fetchLiveDataset();
+      setIsFetchingDB(false);
+
+      if (!data.branches || data.branches.length === 0) {
+        setDbLogs(prev => prev + `[EMPTY DATABASE SCHEMAS ALERT] Selected tables generated 0 active rows.\nYou must SEED/initial upload standard aspects to populate your tables first.\nUse the 'Seed / Upload Aspects' operation to perform this task automatically.`);
+        // Graceful empty fallback states
+        setActiveBranchList([]);
+        setActiveHypotheses([]);
+        setActiveNatalInfluences([]);
+        setActiveAgentReflections([]);
+        setIsMockDeactivated(true);
+      } else {
+        setActiveBranchList(data.branches);
+        if (data.hypotheses) setActiveHypotheses(data.hypotheses);
+        if (data.natalInfluences) setActiveNatalInfluences(data.natalInfluences);
+        if (data.agentReflections) setActiveAgentReflections(data.agentReflections);
+        
+        setIsMockDeactivated(true);
+        setDbLogs(prev => prev + `[SUCCESS] Synchronized with Supabase and verified calculations:\n- scenario_branches: ${data.branches.length}\n- hypotheses: ${data.hypotheses?.length || 0}\n- agent_reflections: ${data.agentReflections?.length || 0}\n- natal_influences: ${data.natalInfluences?.length || 0}`);
+      }
+    } catch (err: any) {
+      setIsFetchingDB(false);
+      setDbLogs(prev => prev + `[CRITICAL CONFIG ERROR] Network handshake aborted: ${err?.message || err}`);
+    }
+  };
+
+  // Seed the Supabase tables with initial baseline aspectos
+  const handleSeedDatabase = async () => {
+    setIsUploadingDB(true);
+    setDbLogs(`Seeding default aspect models...`);
+    try {
+      const res = await uploadAllBaselineAspects({
+        branches: MOCK_BRANCHES,
+        hypotheses: MOCK_HYPOTHESES,
+        agentReflections: MOCK_AGENT_REFLECTIONS,
+        natalInfluences: MOCK_NATAL_INFLUENCES
+      });
+      setIsUploadingDB(false);
+      setDbLogs(prev => prev + `\n` + res.log);
+      
+      // If live mode is selected, reload aspects automatically
+      if (isMockDeactivated) {
+        await handleToggleMockMode(true);
+      }
+    } catch (err: any) {
+      setIsUploadingDB(false);
+      setDbLogs(prev => prev + `\n[ERROR] Seed upload pipeline failed: ${err?.message || err}`);
+    }
+  };
+
+  // Force trigger live sync
+  const handleForceRefresh = async () => {
+    await handleToggleMockMode(true);
+  };
+
 
   // Dialogue Interaction Modals
   const [activeConsultation, setActiveConsultation] = useState<{
@@ -137,7 +282,7 @@ export default function App() {
       };
 
       // Append custom branch to top
-      setActiveBranchList([questionBranch, ...MOCK_BRANCHES.filter(b => b.id !== 'br-custom')]);
+      setActiveBranchList([questionBranch, ...activeBranchList.filter(b => b.id !== 'br-custom')]);
       setSelectedBranchId('br-custom');
       setIsSimulating(false);
     }, 800);
@@ -168,7 +313,7 @@ export default function App() {
   // Retrieve current active locked items
   const selectedBranch = activeBranchList.find(b => b.id === selectedBranchId) || null;
   const relatedHypothesesIds = selectedBranch ? selectedBranch.relatedHypothesesIds : [];
-  const relatedHypotheses = MOCK_HYPOTHESES.filter(h => relatedHypothesesIds.includes(h.id));
+  const relatedHypotheses = activeHypotheses.filter(h => relatedHypothesesIds.includes(h.id));
 
   return (
     <div id="app" className="min-h-screen bg-brand-bg text-slate-300 flex flex-col antialiased selection:bg-indigo-500/30 selection:text-indigo-200 font-sans">
@@ -237,17 +382,35 @@ export default function App() {
           </div>
         )}
 
+        {/* Standalone User Context Loader */}
+        <UserLoader 
+          onUserLoaded={handleUserLoaded}
+          activeUserId={activeUserId}
+          onClearUser={handleClearUser}
+        />
+
+        {/* Supabase Dynamic Database Control Center */}
+        <SupabaseManager 
+          isMockDeactivated={isMockDeactivated}
+          onToggleMockMode={handleToggleMockMode}
+          onSeedDatabase={handleSeedDatabase}
+          onForceRefresh={handleForceRefresh}
+          isUploading={isUploadingDB}
+          isFetching={isFetchingDB}
+          operationLogs={dbLogs}
+        />
+
         {/* THREE ZONES GRID CONTAINER */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
           
           {/* ================= ZONE 1: LEFT CONTEXT RAIL (Profile, baseline & Hypotheses) ================= */}
           <section className="col-span-12 xl:col-span-3 lg:col-span-4 space-y-6 order-2 lg:order-1">
             {/* Profile summary baseline */}
-            <NatalInfluenceOverlay influences={MOCK_NATAL_INFLUENCES} />
+            <NatalInfluenceOverlay influences={activeNatalInfluences} />
 
             {/* Constellation matrix working hypotheses */}
             <SevenHypothesesConstellation 
-              hypotheses={MOCK_HYPOTHESES}
+              hypotheses={activeHypotheses}
               selectedBranchId={selectedBranchId}
               selectedBranchHypothesesIds={relatedHypothesesIds}
               selectedHypothesisId={selectedHypothesisId}
@@ -263,6 +426,8 @@ export default function App() {
                 onSelectBranch={setSelectedBranchId}
                 selectedBranchId={selectedBranchId}
                 reducedMotion={reducedMotion}
+                externalPatternState={userPatternState}
+                onPatternStateChange={setUserPatternState}
               />
             ) : (
               /* Scenic curved branches fan widget */
@@ -307,7 +472,7 @@ export default function App() {
             <BranchDetailPanel 
               selectedBranch={selectedBranch}
               relatedHypotheses={relatedHypotheses}
-              agentReflections={MOCK_AGENT_REFLECTIONS}
+              agentReflections={activeAgentReflections}
               onSelectHypothesis={setSelectedHypothesisId}
               onSelectAgent={setSelectedAgentId}
               onAskEve={handleConsultEve}
@@ -330,7 +495,7 @@ export default function App() {
         {/* Multi-agent reflexives list */}
         <section className="border-t border-slate-900 pt-6">
           <AgentReflectionPanel 
-            reflections={MOCK_AGENT_REFLECTIONS}
+            reflections={activeAgentReflections}
             selectedBranchId={selectedBranchId}
             onSelectAgent={setSelectedAgentId}
             selectedAgentId={selectedAgentId}

@@ -18,7 +18,9 @@ import {
   AlertTriangle,
   Flame,
   Globe,
-  Wind
+  Wind,
+  CloudUpload,
+  Check
 } from 'lucide-react';
 import { 
   project3DTo2D, 
@@ -29,6 +31,11 @@ import {
   UserPatternState, 
   DEFAULT_PATTERN_STATE 
 } from './branchGrowthEngine';
+import { 
+  uploadCalibration, 
+  fetchCalibration, 
+  isSupabaseConfigured 
+} from '../../lib/supabase';
 import { GrowthBranch } from './patternAmplifierTypes';
 import { TendencyCategory, ScenarioBranch } from '../../types';
 
@@ -36,15 +43,69 @@ interface PatternAmplifierViewProps {
   onSelectBranch: (id: string | null) => void;
   selectedBranchId: string | null;
   reducedMotion: boolean;
+  externalPatternState?: UserPatternState | null;
+  onPatternStateChange?: (state: UserPatternState) => void;
 }
 
 export default function PatternAmplifierView({
   onSelectBranch,
   selectedBranchId,
-  reducedMotion: parentReducedMotion
+  reducedMotion: parentReducedMotion,
+  externalPatternState,
+  onPatternStateChange
 }: PatternAmplifierViewProps) {
   // State 1: Active Pattern State (allows empty test toggling)
   const [patternState, setPatternState] = useState<UserPatternState | null>(DEFAULT_PATTERN_STATE);
+  
+  // Calibration saving to Supabase states
+  const [isUploadingCalib, setIsUploadingCalib] = useState<boolean>(false);
+  const [calibStatus, setCalibStatus] = useState<string | null>(null);
+
+  // Load from Supabase on mount
+  useEffect(() => {
+    async function loadSavedCalib() {
+      if (isSupabaseConfigured) {
+        const saved = await fetchCalibration();
+        if (saved) {
+          setPatternState(saved);
+          if (onPatternStateChange) onPatternStateChange(saved);
+        }
+      }
+    }
+    loadSavedCalib();
+  }, []);
+
+  // Synchronize with external pattern states (e.g., loaded test users)
+  useEffect(() => {
+    if (externalPatternState) {
+      setPatternState(externalPatternState);
+    }
+  }, [externalPatternState]);
+
+  const handleSliderChange = (field: keyof UserPatternState, val: number) => {
+    if (!patternState) return;
+    const newState = { ...patternState, [field]: val };
+    setPatternState(newState);
+    if (onPatternStateChange) {
+      onPatternStateChange(newState);
+    }
+  };
+
+  const handleSaveCalibrationToSupabase = async () => {
+    if (!patternState) return;
+    setIsUploadingCalib(true);
+    setCalibStatus("Uploading calibration standard...");
+    const res = await uploadCalibration(patternState);
+    setIsUploadingCalib(false);
+    if (res.success) {
+      setCalibStatus("SUCCESSFULLY UPLOADED!");
+      setTimeout(() => setCalibStatus(null), 3000);
+    } else {
+      setCalibStatus(`FAILED: ${res.error || 'Check configuration'}`);
+      setTimeout(() => setCalibStatus(null), 5000);
+    }
+  };
+
   
   // State 2: Simulated hypothesis availability
   const [hasWorkingHypotheses, setHasWorkingHypotheses] = useState<boolean>(true);
@@ -337,7 +398,7 @@ export default function PatternAmplifierView({
               <input 
                 type="range" min="0" max="1" step="0.05"
                 value={patternState.natalWoodStrength}
-                onChange={(e) => setPatternState(prev => prev ? { ...prev, natalWoodStrength: parseFloat(e.target.value) } : null)}
+                onChange={(e) => handleSliderChange('natalWoodStrength', parseFloat(e.target.value))}
                 className="w-full accent-emerald-500 h-1 bg-slate-800 rounded-lg cursor-pointer"
               />
             </div>
@@ -350,7 +411,7 @@ export default function PatternAmplifierView({
               <input 
                 type="range" min="0" max="1" step="0.05"
                 value={patternState.natalMetalStrength}
-                onChange={(e) => setPatternState(prev => prev ? { ...prev, natalMetalStrength: parseFloat(e.target.value) } : null)}
+                onChange={(e) => handleSliderChange('natalMetalStrength', parseFloat(e.target.value))}
                 className="w-full accent-cyan-500 h-1 bg-slate-800 rounded-lg cursor-pointer"
               />
             </div>
@@ -363,7 +424,7 @@ export default function PatternAmplifierView({
               <input 
                 type="range" min="0" max="1" step="0.05"
                 value={patternState.transitPressure}
-                onChange={(e) => setPatternState(prev => prev ? { ...prev, transitPressure: parseFloat(e.target.value) } : null)}
+                onChange={(e) => handleSliderChange('transitPressure', parseFloat(e.target.value))}
                 className="w-full accent-amber-500 h-1 bg-slate-800 rounded-lg cursor-pointer"
               />
             </div>
@@ -376,7 +437,7 @@ export default function PatternAmplifierView({
               <input 
                 type="range" min="0" max="1" step="0.05"
                 value={patternState.quizDiscipline}
-                onChange={(e) => setPatternState(prev => prev ? { ...prev, quizDiscipline: parseFloat(e.target.value) } : null)}
+                onChange={(e) => handleSliderChange('quizDiscipline', parseFloat(e.target.value))}
                 className="w-full accent-indigo-500 h-1 bg-slate-800 rounded-lg cursor-pointer"
               />
             </div>
@@ -389,18 +450,41 @@ export default function PatternAmplifierView({
               <input 
                 type="range" min="0" max="1" step="0.05"
                 value={patternState.skepticDamping}
-                onChange={(e) => setPatternState(prev => prev ? { ...prev, skepticDamping: parseFloat(e.target.value) } : null)}
+                onChange={(e) => handleSliderChange('skepticDamping', parseFloat(e.target.value))}
                 className="w-full accent-rose-500 h-1 bg-slate-800 rounded-lg cursor-pointer"
               />
             </div>
 
-            <div className="space-y-1 flex items-end justify-end">
-              <button 
-                onClick={() => setPatternState(DEFAULT_PATTERN_STATE)}
-                className="text-[9px] font-mono text-indigo-400 hover:text-white flex items-center gap-1 uppercase tracking-wider pb-1.5 cursor-pointer"
-              >
-                <RotateCcw size={10} /> Reset Multipliers
-              </button>
+            <div className="space-y-1.5 flex flex-col items-stretch sm:items-end justify-end col-span-1 sm:col-span-2 md:col-span-3 pt-2 border-t border-slate-900 flex-row sm:flex-row gap-2.5">
+              <div className="flex flex-wrap items-center justify-between sm:justify-end gap-3 w-full">
+                {calibStatus && (
+                  <span className={`text-[9px] font-mono px-2 py-0.5 rounded font-bold uppercase transition-all ${
+                    calibStatus.includes('SUCCESS') 
+                      ? 'bg-emerald-950/40 text-emerald-450 border border-emerald-500/20 text-emerald-400' 
+                      : 'bg-indigo-950/45 text-indigo-400 border border-indigo-505/20'
+                  }`}>
+                    {calibStatus}
+                  </span>
+                )}
+                
+                <div className="flex items-center gap-3">
+                  <button 
+                    onClick={handleSaveCalibrationToSupabase}
+                    disabled={isUploadingCalib}
+                    className="text-[9px] font-mono text-emerald-400 hover:text-emerald-300 disabled:opacity-50 flex items-center gap-1 uppercase tracking-wider bg-emerald-950/20 border border-emerald-500/20 px-2.5 py-1 rounded cursor-pointer hover:bg-emerald-900/10 transition-colors font-bold"
+                    title="Upload multipliers to Supabase scenario_calibrations"
+                  >
+                    <CloudUpload size={10} /> Save to Supabase
+                  </button>
+
+                  <button 
+                    onClick={() => setPatternState(DEFAULT_PATTERN_STATE)}
+                    className="text-[9px] font-mono text-indigo-400 hover:text-white flex items-center gap-1 uppercase tracking-wider bg-slate-900 border border-slate-800 px-2.5 py-1 rounded cursor-pointer hover:bg-slate-850 transition-colors"
+                  >
+                    <RotateCcw size={10} /> Reset
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         </div>
