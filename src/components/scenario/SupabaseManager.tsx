@@ -58,26 +58,26 @@ export default function SupabaseManager({
       <div className="absolute top-0 right-0 w-48 h-48 bg-indigo-500/5 rounded-full blur-3xl pointer-events-none" />
 
       {/* Header Info */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800/80 pb-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-rose-950/40 pb-4 bg-rose-950/5 p-3 rounded-lg border border-rose-950/20">
         <div className="flex items-center gap-3">
-          <div className={`p-2 rounded-lg ${isMockDeactivated ? 'bg-indigo-500/10 text-indigo-400' : 'bg-slate-900 text-slate-500'} border border-slate-800`}>
+          <div className="p-2 rounded-lg bg-red-950/20 text-red-400 border border-red-900/40">
             <Database size={18} className={isFetching || isUploading ? 'animate-spin' : ''} />
           </div>
           <div>
             <h3 className="text-sm font-bold font-sans text-slate-100 uppercase tracking-wider flex items-center gap-2">
-              <span>Supabase Integration Bridge</span>
+              <span className="text-rose-400">[DEBUG] SANDBOX DATABASE BRIDGING PANEL</span>
               {!isMockDeactivated ? (
                 <span className="text-[9px] font-mono px-2 py-0.5 rounded-full bg-slate-900 border border-slate-800 text-slate-400 font-semibold uppercase">
                   MOCK PLAYGROUND ACTIVE
                 </span>
               ) : (
-                <span className="text-[9px] font-mono px-2 py-0.5 rounded-full bg-emerald-950/40 border border-emerald-500/30 text-emerald-400 font-semibold uppercase animate-pulse">
-                  LIVE DATABASE ACTIVE
+                <span className="text-[9px] font-mono px-2 py-0.5 rounded-full bg-rose-950/40 border border-rose-500/30 text-rose-400 font-semibold uppercase animate-pulse">
+                  DEBUG: CONNECTED TO DEV STORAGE
                 </span>
               )}
             </h3>
-            <p className="text-[10px] font-mono text-slate-500 uppercase mt-0.5">
-              Syncing client calibrations & calculated scenario structures to remote tables
+            <p className="text-[10px] font-mono text-slate-400 uppercase mt-0.5">
+              ⚠️ Warning: ONLY prototype aspect tables may be modified. Live scenario tables are server-enforced and cannot be written from browser.
             </p>
           </div>
         </div>

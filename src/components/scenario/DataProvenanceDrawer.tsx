@@ -13,6 +13,17 @@ interface DataProvenanceDrawerProps {
   mode: ScenarioMode;
   horizon: HorizonType;
   isMock: boolean;
+  // Dynamic fields for expanded details from central backend-driven run
+  activeUserId?: string | null;
+  patternStateId?: string | null;
+  seedDocumentId?: string | null;
+  scenarioRunId?: string | null;
+  miroSharkProjectId?: string | null;
+  miroSharkGraphTaskId?: string | null;
+  miroSharkSimulationId?: string | null;
+  statusLevel?: string | null;
+  persistedBranchCount?: number | null;
+  normalizerWarnings?: string[] | null;
 }
 
 interface EpistemicAlert {
@@ -28,7 +39,17 @@ export default function DataProvenanceDrawer({
   selectedBranch,
   mode,
   horizon,
-  isMock
+  isMock,
+  activeUserId = null,
+  patternStateId = null,
+  seedDocumentId = null,
+  scenarioRunId = null,
+  miroSharkProjectId = null,
+  miroSharkGraphTaskId = null,
+  miroSharkSimulationId = null,
+  statusLevel = null,
+  persistedBranchCount = null,
+  normalizerWarnings = null
 }: DataProvenanceDrawerProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [copiedSection, setCopiedSection] = useState<string | null>(null);
@@ -232,6 +253,70 @@ Project Counterfactual branches fanning outward with specific probabilities base
       {/* Expanded Provenance fields */}
       {isOpen && (
         <div className="mt-4 pt-4 border-t border-slate-900 space-y-5 animate-fadeIn duration-200">
+          
+          {/* ================= CENTRALIZED PROVENANCE METADATA DECK ================= */}
+          <div className="p-4 bg-[#030508]/90 border border-slate-800 rounded-xl space-y-3 font-mono text-[11px] shadow-[inset_0_0_10px_rgba(0,0,0,0.8)]">
+            <h5 className="font-bold text-slate-200 border-b border-slate-900 pb-1.5 flex items-center gap-1.5 uppercase text-[10px] tracking-widest text-indigo-400">
+              <Database size={13} />
+              <span>CENTRALIZED PROVENANCE METADATA DECK</span>
+            </h5>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-2.5 leading-relaxed">
+              <div className="flex items-center justify-between border-b border-slate-900/60 pb-1">
+                <span className="text-slate-500 text-[10px] uppercase">Active User ID:</span>
+                <span className="text-slate-300 font-bold select-all">{activeUserId || 'guest_prototype_anonymous'}</span>
+              </div>
+              <div className="flex items-center justify-between border-b border-slate-900/60 pb-1">
+                <span className="text-slate-500 text-[10px] uppercase">PatternState ID:</span>
+                <span className="text-indigo-400 font-bold">{patternStateId || 'prov_fused_72_baseline_qi'}</span>
+              </div>
+              <div className="flex items-center justify-between border-b border-slate-900/60 pb-1">
+                <span className="text-slate-500 text-[10px] uppercase">Seed Document ID:</span>
+                <span className="text-indigo-300">{seedDocumentId || 'doc_seed_dynamic_baseline_v2'}</span>
+              </div>
+              <div className="flex items-center justify-between border-b border-slate-900/60 pb-1">
+                <span className="text-slate-500 text-[10px] uppercase">Scenario Run ID:</span>
+                <span className="text-cyan-400 font-bold">{scenarioRunId || 'no_active_run_id'}</span>
+              </div>
+              <div className="flex items-center justify-between border-b border-slate-900/60 pb-1">
+                <span className="text-slate-500 text-[10px] uppercase">MiroShark Project ID:</span>
+                <span className="text-slate-300">{miroSharkProjectId || 'proj_miro_default_align'}</span>
+              </div>
+              <div className="flex items-center justify-between border-b border-slate-900/60 pb-1">
+                <span className="text-slate-500 text-[10px] uppercase">MiroShark Graph Task ID:</span>
+                <span className="text-slate-300">{miroSharkGraphTaskId || 'tok_g_task_9122'}</span>
+              </div>
+              <div className="flex items-center justify-between border-b border-slate-900/60 pb-1">
+                <span className="text-slate-500 text-[10px] uppercase">MiroShark Simulation ID:</span>
+                <span className="text-slate-300">{miroSharkSimulationId || 'sim_empty_baseline'}</span>
+              </div>
+              <div className="flex items-center justify-between border-b border-slate-900/60 pb-1">
+                <span className="text-slate-500 text-[10px] uppercase">Status-Stufe:</span>
+                <span className={`font-bold uppercase ${statusLevel === 'completed' ? 'text-emerald-400' : 'text-amber-400 animate-pulse'}`}>{statusLevel || 'IDLE / PENDING_USER'}</span>
+              </div>
+              <div className="flex items-center justify-between border-b border-slate-900/60 pb-1">
+                <span className="text-slate-500 text-[10px] uppercase">Persistierte Branch-Anzahl:</span>
+                <span className="text-slate-300 text-[11px] font-bold">{persistedBranchCount !== null ? persistedBranchCount : branches.length}</span>
+              </div>
+              <div className="flex items-center justify-between border-b border-slate-900/60 pb-1">
+                <span className="text-slate-500 text-[10px] uppercase">Mock/Live Flag:</span>
+                <span className={`font-bold ${!isMock ? 'text-emerald-400' : 'text-slate-500'}`}>{!isMock ? 'LIVE ENDPOINT RUN' : 'MOCK PLAYGROUND'}</span>
+              </div>
+            </div>
+            {normalizerWarnings && normalizerWarnings.length > 0 ? (
+              <div className="pt-2 border-t border-slate-900 space-y-1 bg-amber-950/5 p-2 rounded border border-amber-900/10">
+                <span className="text-[10px] text-amber-500 font-bold uppercase tracking-wider block">Normalizer Warnings:</span>
+                <ul className="list-disc pl-4 space-y-0.5 text-[9.5px] text-slate-400">
+                  {normalizerWarnings.map((warn, i) => (
+                    <li key={i}>{warn}</li>
+                  ))}
+                </ul>
+              </div>
+            ) : (
+              <div className="pt-2 border-t border-slate-900 text-[10px] text-emerald-500">
+                ✓ Element patterns calibrated with zero normalizer warnings.
+              </div>
+            )}
+          </div>
           
           {/* ================= ACTIVE EPISTEMIC ALERT OVERLAY MODULE ================= */}
           {showEpistemicAlert && alertDetails && (

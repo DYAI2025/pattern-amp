@@ -81,6 +81,54 @@ export default function App() {
   const [activeUserData, setActiveUserData] = useState<any | null>(null);
   const [userPatternState, setUserPatternState] = useState<UserPatternState | null>(null);
 
+  // Centralized Provenance Metadata variables from live run lifecycle
+  const [scenarioRunId, setScenarioRunId] = useState<string | null>(null);
+  const [patternStateId, setPatternStateId] = useState<string | null>('prov_fused_72_baseline_qi');
+  const [seedDocumentId, setSeedDocumentId] = useState<string | null>('doc_seed_dynamic_baseline_v2');
+  const [miroSharkProjectId, setMiroSharkProjectId] = useState<string | null>('proj_miro_default_align');
+  const [miroSharkGraphTaskId, setMiroSharkGraphTaskId] = useState<string | null>('tok_g_task_9122');
+  const [miroSharkSimulationId, setMiroSharkSimulationId] = useState<string | null>('sim_empty_baseline');
+  const [statusLevel, setStatusLevel] = useState<string | null>(null);
+  const [normalizerWarnings, setNormalizerWarnings] = useState<string[] | null>(null);
+  const [backendSeedData, setBackendSeedData] = useState<any | null>(null);
+  const [simulationProgress, setSimulationProgress] = useState<number>(0);
+
+  // Mappers translating raw Backend branches schema contract to UI schema contract
+  const mapServerBranchToUiBranch = (server: any): ScenarioBranch => {
+    const visual = server.visual_state || {};
+    return {
+      id: server.id,
+      title: server.title,
+      summary: server.summary,
+      tendencyType: server.tendency_type || 'coherence',
+      probabilityWeight: server.probability_like_weight || 5,
+      confidence: server.confidence !== undefined ? server.confidence : 0.8,
+      horizonRelevance: visual.horizonRelevance || 100,
+      deviation: visual.deviation !== undefined ? visual.deviation : 0,
+      coherenceDelta: server.coherence_delta || 0,
+      tensionDelta: server.tension_delta || 0,
+      isDashed: !!visual.isDashed,
+      notToInfer: server.not_to_infer || 'No direct clinical boundaries calculated.',
+      reflectiveQuestion: server.reflective_question || 'What does this highlight inside your routine?',
+      whyAppears: server.why_appears || 'Appears due to elemental indicators.',
+      whatResonates: server.what_resonates || 'Resonates with target discipline parameters.',
+      whereFriction: server.where_friction || 'Tension lines detected across workspace coordinates.',
+      increaseCoherence: server.increase_coherence || 'Establish consistent workspace baseline habits.',
+      sources: Array.isArray(server.source_weights) 
+        ? server.source_weights 
+        : [
+            { name: 'Server Core Sync', weight: 50, confidence: 'high', lastUpdated: 'Stable', dataType: 'simulated' },
+            { name: 'Core Baseline transits', weight: 50, confidence: 'high', lastUpdated: 'Stable', dataType: 'calculated' }
+          ],
+      relatedHypothesesIds: Array.isArray(server.related_hypotheses) ? server.related_hypotheses : []
+    };
+  };
+
+  const mapServerBranchesToUiBranches = (branches: any[]): ScenarioBranch[] => {
+    if (!Array.isArray(branches)) return [];
+    return branches.map(mapServerBranchToUiBranch);
+  };
+
   const handleUserLoaded = (userData: any, patternState: UserPatternState | null) => {
     setActiveUserId(userData.activeUserId);
     setActiveUserData(userData);
@@ -219,33 +267,107 @@ export default function App() {
   const [isExported, setIsExported] = useState(false);
 
   // Handle Simulation
-  const handleSimulateMiroShark = () => {
+  const handleSimulateMiroShark = async () => {
     setIsSimulating(true);
-    setSimulationLogs(["Initializing MiroShark API node...", "Parsing active Wu-Xing elements balance..."]);
+    setSimulationProgress(0);
+    setSimulationLogs(["Contacting secure backend coordinator...", "Starting task run parameters check..."]);
     
-    setTimeout(() => {
-      setSimulationLogs(prev => [...prev, "Syncing quiz memory vectors via Supabase...", "Calibrating 90-day trajectory with Saturn transits..."]);
-    }, 450);
-
-    setTimeout(() => {
-      // Modify mock parameters slightly to simulate a "Live run response"
-      const modifiedBranches = MOCK_BRANCHES.map(b => {
-        if (b.id === 'br-1') {
-          return {
-            ...b,
-            confidence: 0.99,
-            probabilityWeight: 10,
-            coherenceDelta: 5.0
-          };
-        }
-        return b;
+    try {
+      // 1. Send run request with the current activeUserId
+      const runRes = await fetch('/api/scenario/run', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ activeUserId: activeUserId || 'guest-prototype-uuid-9102' })
       });
-      setActiveBranchList(modifiedBranches);
+      
+      if (!runRes.ok) {
+        throw new Error(`Failed to initiate run session: ${runRes.statusText}`);
+      }
+      
+      const runData = await runRes.json();
+      const runId = runData.runId;
+      setScenarioRunId(runId);
+      setStatusLevel('pending');
+      setMiroSharkSimulationId(`sim_active_${runId.substring(4, 10)}`);
+      
+      // 2. Poll progress status endpoint at regular structural frequencies
+      const pollInterval = setInterval(async () => {
+        try {
+          const statusRes = await fetch(`/api/scenario/status/${runId}`);
+          if (!statusRes.ok) {
+            clearInterval(pollInterval);
+            throw new Error(`Status check failed: ${statusRes.statusText}`);
+          }
+          const statusData = await statusRes.json();
+          
+          setSimulationLogs(statusData.logs || []);
+          setSimulationProgress(statusData.progress || 0);
+          setStatusLevel(statusData.status);
+          
+          if (statusData.status === 'completed') {
+            clearInterval(pollInterval);
+            
+            // 3. Obtain resolved branches results
+            const resultsRes = await fetch(`/api/scenario/results/${runId}`);
+            if (!resultsRes.ok) {
+              throw new Error(`Results download failed: ${resultsRes.statusText}`);
+            }
+            const resultsData = await resultsRes.json();
+            
+            // 4. Ingest raw seed document and warning triggers
+            const seedRes = await fetch(`/api/scenario/seed/${runId}`);
+            if (seedRes.ok) {
+              const seedData = await seedRes.json();
+              setBackendSeedData(seedData);
+              setSeedDocumentId(`doc_seed_${runId}`);
+              setPatternStateId(`prov_fused_72_${runId}`);
+              
+              if (seedData.missing_data_warnings) {
+                setNormalizerWarnings(seedData.missing_data_warnings);
+              }
+              if (seedData.miro_shark_run_id) {
+                setMiroSharkProjectId('proj_miro_active_sprint');
+                setMiroSharkGraphTaskId(`tok_g_task_${runId.slice(-4)}`);
+                setMiroSharkSimulationId(seedData.miro_shark_run_id);
+              }
+            }
+            
+            // Map raw server categories to validated local UI attributes
+            const uiBranches = mapServerBranchesToUiBranches(resultsData.branches);
+            setActiveBranchList(uiBranches);
+            
+            // Re-render and recalibrate user patterns systems
+            if (resultsData.patternState) {
+              setUserPatternState({
+                activeUserId: resultsData.patternState.activeUserId,
+                woodBalance: resultsData.patternState.elements.wood,
+                metalBalance: resultsData.patternState.elements.metal,
+                moonPhase: 'Scorpio Waning Aspect',
+                dailyCoherenceIndex: resultsData.patternState.alignmentIndex,
+                isLiveValidated: true
+              });
+            }
+            
+            setIsSimulating(false);
+            if (uiBranches.length > 0) {
+              setSelectedBranchId(uiBranches[0].id);
+            }
+          } else if (statusData.status === 'failed') {
+            clearInterval(pollInterval);
+            setIsSimulating(false);
+            setSimulationLogs(prev => [...prev, '[CRITICAL ERROR] MiroShark target node run sequence aborted.']);
+          }
+        } catch (pollErr: any) {
+          clearInterval(pollInterval);
+          setIsSimulating(false);
+          setSimulationLogs(prev => [...prev, `[CRITICAL ERROR] Ingestion exception: ${pollErr?.message || pollErr}`]);
+        }
+      }, 700);
+      
+    } catch (err: any) {
       setIsSimulating(false);
-      setSimulationLogs([]);
-      // Select the strengthened branch
-      setSelectedBranchId('br-1');
-    }, 1200);
+      setSimulationLogs(prev => [...prev, `[CRITICAL ERROR] Failed to initialize simulation: ${err?.message || err}`]);
+    }
   };
 
   // Strategic customized query parsing
@@ -389,16 +511,18 @@ export default function App() {
           onClearUser={handleClearUser}
         />
 
-        {/* Supabase Dynamic Database Control Center */}
-        <SupabaseManager 
-          isMockDeactivated={isMockDeactivated}
-          onToggleMockMode={handleToggleMockMode}
-          onSeedDatabase={handleSeedDatabase}
-          onForceRefresh={handleForceRefresh}
-          isUploading={isUploadingDB}
-          isFetching={isFetchingDB}
-          operationLogs={dbLogs}
-        />
+        {/* Supabase Dynamic Database Control Center (Gated behind Developer flag) */}
+        {(import.meta as any).env.VITE_ENABLE_SUPABASE_DEBUG_PANEL === 'true' && (
+          <SupabaseManager 
+            isMockDeactivated={isMockDeactivated}
+            onToggleMockMode={handleToggleMockMode}
+            onSeedDatabase={handleSeedDatabase}
+            onForceRefresh={handleForceRefresh}
+            isUploading={isUploadingDB}
+            isFetching={isFetchingDB}
+            operationLogs={dbLogs}
+          />
+        )}
 
         {/* THREE ZONES GRID CONTAINER */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
@@ -463,7 +587,7 @@ export default function App() {
             />
 
             {/* Prompt payload calculations seed */}
-            <ScenarioSeedPreview mode={mode} horizon={horizon} />
+            <ScenarioSeedPreview mode={mode} horizon={horizon} backendSeedData={backendSeedData} />
           </section>
 
           {/* ================= ZONE 3: RIGHT INTERPRETATION RAIL (Interpretation Details & Reflections) ================= */}
@@ -508,7 +632,17 @@ export default function App() {
           selectedBranch={selectedBranch}
           mode={mode}
           horizon={horizon}
-          isMock={!isSimulating && selectedBranchId !== 'br-custom'}
+          isMock={!isMockDeactivated}
+          activeUserId={activeUserId}
+          patternStateId={patternStateId}
+          seedDocumentId={seedDocumentId}
+          scenarioRunId={scenarioRunId}
+          miroSharkProjectId={miroSharkProjectId}
+          miroSharkGraphTaskId={miroSharkGraphTaskId}
+          miroSharkSimulationId={miroSharkSimulationId}
+          statusLevel={statusLevel}
+          persistedBranchCount={activeBranchList.length}
+          normalizerWarnings={normalizerWarnings}
         />
 
       </main>

@@ -221,10 +221,10 @@ export default function UserLoader({
           <div className="p-3 bg-slate-950 rounded-xl border border-slate-900 leading-normal text-[10px] text-slate-400 space-y-1">
             <div className="flex items-center gap-1.5 font-bold text-slate-300">
               <Info size={12} className="text-indigo-400" />
-              <span>TEST MODE ONLY:</span>
+              <span>TEST WORKSPACE BOUNDARIES:</span>
             </div>
             <p className="font-mono">
-              In production, <code className="text-indigo-400 bg-black/60 px-1 py-0.5 rounded border border-slate-900">activeUserId</code> must come from authenticated session context, not manual input.
+              In live Bazodiac, manual input is replaced by the Auth Session. The Loader sets <code className="text-indigo-400 bg-black/60 px-1 py-0.5 rounded border border-slate-900">activeUserId</code> and displays a local data preview, but is **not** the source of truth for ScenarioSeed or dynamic PatternState, which are orchestrated server-side.
             </p>
           </div>
 
