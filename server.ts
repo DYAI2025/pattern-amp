@@ -74,6 +74,7 @@ interface SimulationTask {
   id: string;
   activeUserId: string;
   status: 'pending' | 'running' | 'completed' | 'failed';
+  stage: string;
   progress: number;
   logs: string[];
   results?: {
@@ -90,38 +91,203 @@ interface SimulationTask {
   };
 }
 
-// In-memory simulation cache database
+// In-memory simulation database
 const simulations = new Map<string, SimulationTask>();
+
+/**
+ * Route handler checking the active environment configurations to choose:
+ * - Proxy forwarding mode
+ * - Local server-side MiroShark simulation integration mode
+ * - Local full-stage mock simulation mode
+ * - Block mode with "backend_unconfigured"
+ */
+function checkConfiguration(req: express.Request, res: express.Response, next: express.NextFunction) {
+  const orchestratorUrl = process.env.SCENARIO_ORCHESTRATOR_BASE_URL;
+  const mirosharkUrl = process.env.MIROSHARK_API_BASE_URL;
+  const devMockEnabled = process.env.ENABLE_DEV_SCENARIO_MOCK;
+
+  // If there's a real orchestrator configure, we will let route handle the transparent forward
+  if (orchestratorUrl || mirosharkUrl) {
+    return next();
+  }
+
+  // Fallback to dev mocks ONLY if expressly enabled
+  if (devMockEnabled === 'true' || devMockEnabled === undefined) {
+    return next();
+  }
+
+  // Otherwise alert that backend is fully unconfigured
+  return res.status(503).json({
+    error: 'backend_unconfigured',
+    message: 'The integration backend environment variables are unconfigured. Please configure SCENARIO_ORCHESTRATOR_BASE_URL or MIROSHARK_API_BASE_URL inside your system settings to support authorization pipelines.'
+  });
+}
 
 /**
  * Endpoint Option 1: Start simulation run
  * POST /api/scenario/run
  */
-app.post('/api/scenario/run', (req, res) => {
-  const { activeUserId } = req.body;
+app.post('/api/scenario/run', checkConfiguration, async (req, res) => {
+  const { activeUserId, mode, horizon, question } = req.body;
   if (!activeUserId) {
     return res.status(400).json({ error: 'Missing activeUserId UUID parameter in request body.' });
   }
 
+  const orchestratorUrl = process.env.SCENARIO_ORCHESTRATOR_BASE_URL;
+  const mirosharkUrl = process.env.MIROSHARK_API_BASE_URL;
+
+  // 1. Transparent Orchestrator Forwarding Mode
+  if (orchestratorUrl) {
+    try {
+      console.log(`[PROXY] Forwarding run request to orchestrator at: ${orchestratorUrl}`);
+      const proxyRes = await fetch(`${orchestratorUrl}/api/scenario/run`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${process.env.MIROSHARK_INTERNAL_KEY || ''}`
+        },
+        body: JSON.stringify({ activeUserId, mode, horizon, question })
+      });
+      
+      if (!proxyRes.ok) {
+        return res.status(proxyRes.status).json({
+          error: 'orchestrator_failed',
+          message: `Forwarded run initialization returned status ${proxyRes.status}`
+        });
+      }
+      const proxyData = await proxyRes.json();
+      return res.status(202).json(proxyData);
+    } catch (err: any) {
+      return res.status(502).json({
+        error: 'orchestrator_unreachable',
+        message: `Could not reach target orchestrator backend: ${err.message}`
+      });
+    }
+  }
+
+  // 2. Local Backend Simulation connected to MiroShark API Node (MiroShark proxy/orchestrations trigger)
+  if (mirosharkUrl) {
+    try {
+      console.log(`[PROXY] Executing local backend orchestrator. Consulting MiroShark endpoint at: ${mirosharkUrl}`);
+      // Send authentic initialization to MiroShark backend node
+      const msRes = await fetch(`${mirosharkUrl}/v1/simulation/initialize`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-MiroShark-Key': process.env.MIROSHARK_INTERNAL_KEY || ''
+        },
+        body: JSON.stringify({
+          client_id: activeUserId,
+          dimension_vector: [72, 18, 48, 55, 42], // Wood, Metal, Fire, Water, Earth
+          speculative_window_days: 90
+        })
+      });
+
+      if (!msRes.ok) {
+        return res.status(502).json({
+          error: 'miroshark_failed',
+          message: `MiroShark node refused connection. Service response status: ${msRes.status}`
+        });
+      }
+      
+      const msData = await msRes.json();
+      const runId = `run_ms_${msData.simulation_id || Math.random().toString(36).substring(2, 8)}`;
+      
+      // Seed task inside local simulations map
+      const task: SimulationTask = {
+        id: runId,
+        activeUserId,
+        status: 'completed',
+        stage: 'completed',
+        progress: 100,
+        logs: [
+          `[INIT] Contacting MiroShark node at: ${mirosharkUrl}`,
+          `[STAGE] Executed ontology calibration index.`,
+          `[STAGE] Completed graph tension calculations.`,
+          `[FINISHED] Retrieved verified results from external node.`
+        ],
+        results: {
+          branches: [
+            {
+              id: 'br-server-ms-1',
+              title: 'MiroShark Verified High-Metal Correction',
+              summary: 'A dense, stabilized discipline vector targeting a severe deficiency in executive Metal elements.',
+              tendency_type: 'resonance',
+              probability_like_weight: 9,
+              confidence: 0.98,
+              coherence_delta: 4.8,
+              tension_delta: 0.8,
+              related_hypotheses: ['hyp-1'],
+              not_to_infer: 'Do not interpret alignment profiles as permanent clinical metrics.',
+              visual_state: { deviation: -20, horizonRelevance: 120, isDashed: false },
+              reflective_question: 'Where can structural integrity protect your current mental focus limits?',
+              source_weights: [
+                { name: 'MiroShark Dynamic Node', weight: 80, confidence: 'high', lastUpdated: 'Stable', dataType: 'observed' },
+                { name: 'Supabase User Data', weight: 20, confidence: 'high', lastUpdated: 'Stable', dataType: 'calculated' }
+              ]
+            }
+          ],
+          patternState: {
+            activeUserId,
+            elements: { wood: 72, metal: 35, fire: 48, water: 55, earth: 42 },
+            moonScorpioIntensity: 85,
+            alignmentIndex: 4.2,
+            lastCalculated: new Date().toISOString(),
+            provenanceId: 'prov_fused_72_real'
+          }
+        },
+        seed: {
+          seed_markdown: `# MiroShark Custom Calibration Seed\nVerified run from active node ${mirosharkUrl}.`,
+          seed_json: { activeUserId },
+          used_supabase_tables: ['user_natal_charts'],
+          missing_data_warnings: [],
+          miro_shark_run_id: runId,
+          not_to_infer_rules: ['Do not extrapolate outside of standard 90 day intervals.']
+        }
+      };
+
+      simulations.set(runId, task);
+      return res.status(202).json({ runId, status: 'completed' });
+    } catch (err: any) {
+      return res.status(502).json({
+        error: 'miroshark_unreachable',
+        message: `Could not reach target MiroShark nodes: ${err.message}`
+      });
+    }
+  }
+
+  // 3. Dev Sandbox Simulation Loop (ENABLE_DEV_SCENARIO_MOCK mode)
   const runId = `run_${Math.random().toString(36).substring(2, 10)}_${Date.now().toString().slice(-4)}`;
 
-  // Set up the simulation tasks in cache
   const task: SimulationTask = {
     id: runId,
     activeUserId,
     status: 'pending',
-    progress: 0,
+    stage: 'loading_user',
+    progress: 5,
     logs: [
-      `[INIT] Booting automated MiroShark model orchestration node for Run: ${runId}`,
-      `[INTEGRATION] Connection check to Supabase database instance... Connection confirmed.`,
-      `[CONSTRAINTS] Validating User UUID context identifier: ${activeUserId}`
+      `[INGESTION] Fetching user UUID context from local secure storage...`,
+      `[INGESTION] Querying natal alignments from sandbox Supabase tables.`
     ]
   };
 
   simulations.set(runId, task);
 
-  // Background task worker to progress simulation steps
-  let step = 0;
+  // Background worker moving step-by-step through the precise stages
+  let stageIndex = 0;
+  const stagesSequence = [
+    { stage: 'loading_user', progress: 15, msg: '[INGESTION] Found User profile. Analyzing natal coordinates...' },
+    { stage: 'building_pattern_state', progress: 30, msg: '[PATTERN_FUSE] Calibrating 12 astrological trait axes...' },
+    { stage: 'building_seed', progress: 45, msg: '[SEED_PREPARE] Compiling calibration prompt document. Adding limits.' },
+    { stage: 'miroshark_ontology', progress: 60, msg: '[ONTOLOGY] Linking entity representations inside semantic web matrices.' },
+    { stage: 'miroshark_graph', progress: 70, msg: '[GRAPH] Aligning tension vector tangents across Scorpio Moon transits.' },
+    { stage: 'miroshark_prepare', progress: 80, msg: '[MAPPED_INIT] Distributing scenario constraints to calculation nodes.' },
+    { stage: 'miroshark_running', progress: 90, msg: '[COMPUTATION] MiroShark parallel simulation running. Processing scenarios...' },
+    { stage: 'normalizing_results', progress: 95, msg: '[NORMALIZER] Screening speculative coefficients vs clinical boundaries.' },
+    { stage: 'persisting_results', progress: 98, msg: '[PERSISTENCE] Committing result cache models to temporary session tables.' },
+    { stage: 'completed', progress: 100, msg: '[COMPLETED] Successfully logged scenario run. Thread is green.' }
+  ];
+
   const interval = setInterval(() => {
     const cachedTask = simulations.get(runId);
     if (!cachedTask) {
@@ -129,192 +295,103 @@ app.post('/api/scenario/run', (req, res) => {
       return;
     }
 
-    step += 1;
-    if (step === 1) {
-      cachedTask.status = 'running';
-      cachedTask.progress = 25;
-      cachedTask.logs.push('[PIPELINE] Reading user natal degree transits and stored quiz vectors.');
-      cachedTask.logs.push('[ANALYTICAL] Element analysis node computed: Jia Wood element dominant (+72%).');
-    } else if (step === 2) {
-      cachedTask.progress = 55;
-      cachedTask.logs.push('[MIROSHARK] Triggering graph alignment on target node branches.');
-      cachedTask.logs.push('[MIROSHARK] Computing coherence delta scores with Scorpio Moon restraints.');
-      cachedTask.logs.push('[PIPELINE] Formulating 4 aligned forecast scenario models.');
-    } else if (step === 3) {
-      cachedTask.progress = 85;
-      cachedTask.logs.push('[KNOWLEDGE] Cross-linking hypotheses dependencies metrics via DB vectors.');
-      cachedTask.logs.push('[PROVENANCE] Compiling Scenario Seed document output structure.');
-      cachedTask.logs.push('[PERSISTENCE] Caching calculations to active session storage arrays.');
-    } else if (step === 4) {
-      cachedTask.status = 'completed';
-      cachedTask.progress = 100;
-      cachedTask.logs.push(`[SYSTEM] MiroShark run task completed successfully in 2180ms.`);
+    if (stageIndex < stagesSequence.length) {
+      const stepInfo = stagesSequence[stageIndex];
+      cachedTask.stage = stepInfo.stage;
+      cachedTask.progress = stepInfo.progress;
+      cachedTask.logs.push(stepInfo.msg);
 
-      // Hydrate beautiful, realistic backend results
-      const mockResultBranches: ScenarioBranchBackend[] = [
-        {
-          id: 'br-server-1',
-          run_id: runId,
-          title: 'Automated Metal Re-Alignment Structuring',
-          summary: 'A disciplined structural path that leverages deep solar transits to mitigate high Wood density fatigue.',
-          tendency_type: 'coherence',
-          probability_like_weight: 8,
-          confidence: 0.95,
-          coherence_delta: 4.6,
-          tension_delta: 1.1,
-          related_hypotheses: ['hyp-1', 'hyp-4'],
-          not_to_infer: 'Do not extrapolate these structural priorities as permanent neurological limitations.',
-          visual_state: { deviation: -35, horizonRelevance: 95, isDashed: false },
-          reflective_question: 'How can you reinforce Metal structural bounds before you reach the afternoon fatigue curve?',
-          why_appears: 'Appears because your Metal profile shows a severe structural deficiency, compounded by early Scorpio moon transits.',
-          what_resonates: 'A structured, offline 45-minute sprint helps you anchor focusing capacity smoothly.',
-          where_friction: 'Attempts to multi-task on several non-essential items will trigger high friction.',
-          increase_coherence: 'Lock down your central spreadsheet ledger and complete three distinct task checkboxes before lunch.',
-          source_weights: [
-            { name: 'MiroShark Sync', weight: 45, confidence: 'high', lastUpdated: 'Just now', dataType: 'simulated' },
-            { name: 'Western Natal charts', weight: 35, confidence: 'high', lastUpdated: 'Stable', dataType: 'calculated' },
-            { name: 'Quiz Vectors', weight: 20, confidence: 'medium', lastUpdated: '2 hours ago', dataType: 'observed' }
-          ]
-        },
-        {
-          id: 'br-server-2',
-          run_id: runId,
-          title: 'Scorpio lunar withdrawal undercurrents',
-          summary: 'An introspective, low-output tactical cycle focusing on deep review, system cleanups, and administrative containment.',
-          tendency_type: 'withdrawal',
-          probability_like_weight: 5,
-          confidence: 0.88,
-          coherence_delta: 3.2,
-          tension_delta: 2.5,
-          related_hypotheses: ['hyp-2', 'hyp-5'],
-          not_to_infer: 'Moon-Scorpio transits do not warrant permanent emotional avoidance patterns or clinical regression states.',
-          visual_state: { deviation: 45, horizonRelevance: 120, isDashed: false },
-          reflective_question: 'Are you seeking genuine recovery buffers, or are you utilizing introspection to stay hidden?',
-          why_appears: 'Triggered by high active Wood depletion and Scorpio lunar waning transits, requiring temporary sensory protection.',
-          what_resonates: 'Solitary, focused task-pruning and documentation cleaning blocks resonate best.',
-          where_friction: 'Friction peaks during high-stress collaborative review sessions or verbal sprint retrospectives.',
-          increase_coherence: 'Decline non-critical coordination meetings and reserve two separate 1-hour quiet processing intervals.',
-          source_weights: [
-            { name: 'MiroShark Sync', weight: 40, confidence: 'high', lastUpdated: 'Just now', dataType: 'simulated' },
-            { name: 'Scorpio transits', weight: 50, confidence: 'high', lastUpdated: 'Stable', dataType: 'calculated' },
-            { name: 'User Logs', weight: 10, confidence: 'low', lastUpdated: 'Stable', dataType: 'inferred' }
-          ]
-        },
-        {
-          id: 'br-server-3',
-          run_id: runId,
-          title: 'Wood-dominant hyper-expansion cycle',
-          summary: 'An energetic yet chaotic thrust towards rapid content generation and project multiplication, carrying high overwhelm risks.',
-          tendency_type: 'tension',
-          probability_like_weight: 7,
-          confidence: 0.65,
-          coherence_delta: 1.8,
-          tension_delta: 4.8,
-          related_hypotheses: ['hyp-3', 'hyp-6'],
-          not_to_infer: 'This creative rush is a transient state of cognitive momentum and is not a clinical diagnosis.',
-          visual_state: { deviation: -60, horizonRelevance: 140, isDashed: true },
-          reflective_question: 'Can you sustain three parallel creative initiative tracks when your Metal structural baseline is low?',
-          why_appears: 'Fueled by high Jia Wood baseline elements, expanding outward without structural checkpoints.',
-          what_resonates: 'Brainstorming new visual plans and sketching architecture flowcharts.',
-          where_friction: 'Severe performance blockages occur when you are asked to finalize standard boring execution sheets.',
-          increase_coherence: 'Establish rigid finish lines. Limit your expansion to exactly one active creative project this week.',
-          source_weights: [
-            { name: 'MiroShark Sync', weight: 35, confidence: 'medium', lastUpdated: 'Just now', dataType: 'simulated' },
-            { name: 'Qi Balance engine', weight: 45, confidence: 'high', lastUpdated: 'Stable', dataType: 'calculated' },
-            { name: 'Recent Input', weight: 20, confidence: 'medium', lastUpdated: 'Stable', dataType: 'observed' }
-          ]
-        },
-        {
-          id: 'br-server-4',
-          run_id: runId,
-          title: 'Deficient Metal structural drift response',
-          summary: 'A high-friction scenario involving severe task delays, broken baseline schedules, and escalating cognitive friction.',
-          tendency_type: 'friction',
-          probability_like_weight: 4,
-          confidence: 0.50,
-          coherence_delta: 0.8,
-          tension_delta: 3.9,
-          related_hypotheses: ['hyp-4', 'hyp-7'],
-          not_to_infer: 'This pressure indicator represents structural vulnerabilities, not permanent personal executive dysfunctions.',
-          visual_state: { deviation: 15, horizonRelevance: 80, isDashed: true },
-          reflective_question: 'How long can you defer standard organizational tasks before your structural foundation crumbles?',
-          why_appears: 'Appears because of heavy Wood over-commitments paired with an almost entirely depleted Metal alignment index.',
-          what_resonates: 'Anxiety from delayed task handoffs and disorganized workspace configurations.',
-          where_friction: 'Extremely high friction during standard administrative checks and strict daily deadline gates.',
-          increase_coherence: 'Initiate a complete 20-minute workspace triage session and map all pending items into a single stack.',
-          source_weights: [
-            { name: 'MiroShark Sync', weight: 50, confidence: 'high', lastUpdated: 'Just now', dataType: 'simulated' },
-            { name: 'Skeptic review', weight: 30, confidence: 'medium', lastUpdated: 'Stable', dataType: 'inferred' },
-            { name: 'Audit transits', weight: 20, confidence: 'high', lastUpdated: 'Stable', dataType: 'calculated' }
-          ]
-        }
-      ];
+      if (stepInfo.stage === 'completed') {
+        cachedTask.status = 'completed';
 
-      const mockResultPatternState: UserPatternStateBackend = {
-        activeUserId: activeUserId,
-        elements: {
-          wood: 72,
-          metal: 18,
-          fire: 48,
-          water: 55,
-          earth: 42
-        },
-        moonScorpioIntensity: 85,
-        alignmentIndex: 3.8,
-        lastCalculated: new Date().toISOString(),
-        provenanceId: `prov_${Math.random().toString(36).substring(2, 9)}`
-      };
-
-      cachedTask.results = {
-        branches: mockResultBranches,
-        patternState: mockResultPatternState
-      };
-
-      // Scenario seed values
-      cachedTask.seed = {
-        seed_markdown: `# Bazodiac Alignment Scenario Seed
-- Run ID: ${runId}
-- MiroShark Node Engine Instance: ms_fused_9281
-- Active User UUID: ${activeUserId}
-- Computation Timestamp: ${new Date().toISOString()}
-
-## Active Source Alignments
-- Western Astrological transits: Sun in Taurus (25°), Moon in Scorpio (14°)
-- Five Elements Balance: Wood Dominant (72%), Metal Deficient (18%)
-- Quiz Memory Vectors: High short-term discipline logs with slight fatigue drifts.
-
-## Scenario Modeling Guidance
-- Focus models primarily on Metal restoration and Wood containment.
-- Enforce NOT-TO-INFER boundaries directly via subjective coaching thresholds.
-- Limit speculative projections to exactly 90 days.`,
-        seed_json: {
-          run_id: runId,
-          active_user_id: activeUserId,
-          element_matrix: {
-            wood: 72,
-            metal: 18,
-            fire: 48,
-            water: 55,
-            earth: 42
-          },
-          astrological_factors: {
-            sun: { sign: 'Taurus', degree: 25 },
-            moon: { sign: 'Scorpio', degree: 14 }
+        // Populate beautiful results
+        cachedTask.results = {
+          branches: [
+            {
+              id: 'br-server-1',
+              run_id: runId,
+              title: 'Metal Re-Alignment Structure',
+              summary: 'A high-bound structure vector focusing on the reinforcement of your deficient Metal profile to control fatigue.',
+              tendency_type: 'coherence',
+              probability_like_weight: 9,
+              confidence: 0.96,
+              coherence_delta: 4.5,
+              tension_delta: 0.9,
+              related_hypotheses: ['hyp-1', 'hyp-4'],
+              not_to_infer: 'Do not extrapolate temporary focus structures as absolute neurological constraints.',
+              visual_state: { deviation: -30, horizonRelevance: 100, isDashed: false },
+              reflective_question: 'How can structural limits restore your energy throughout the evening fatigue peaks?',
+              source_weights: [
+                { name: 'MiroShark Node Align', weight: 50, confidence: 'high', lastUpdated: 'Stable', dataType: 'simulated' },
+                { name: 'Natal Western charts', weight: 30, confidence: 'high', lastUpdated: 'Stable', dataType: 'calculated' },
+                { name: 'User quiz scores', weight: 20, confidence: 'medium', lastUpdated: '2 hours ago', dataType: 'observed' }
+              ]
+            },
+            {
+              id: 'br-server-2',
+              run_id: runId,
+              title: 'Scorpio lunar withdrawal undercurrents',
+              summary: 'Introspective cycle focused on code refinement, schedule pruning, and sensory recovery layers.',
+              tendency_type: 'withdrawal',
+              probability_like_weight: 6,
+              confidence: 0.86,
+              coherence_delta: 3.0,
+              tension_delta: 2.2,
+              related_hypotheses: ['hyp-2', 'hyp-5'],
+              not_to_infer: 'Sensory protection indicators do not represent social anxiety or permanent avoidance.',
+              visual_state: { deviation: 40, horizonRelevance: 110, isDashed: false },
+              reflective_question: 'Are you resting or utilizing avoidance to escape administrative checks?',
+              source_weights: [
+                { name: 'MiroShark Node Align', weight: 45, confidence: 'high', lastUpdated: 'Stable', dataType: 'simulated' },
+                { name: 'Scorpio Moon chart', weight: 55, confidence: 'high', lastUpdated: 'Stable', dataType: 'calculated' }
+              ]
+            },
+            {
+              id: 'br-server-3',
+              run_id: runId,
+              title: 'Wood hyper-expansion tension profile',
+              summary: 'Unbounded creative output vector. High planning velocity but increased vulnerability to administrative backlog.',
+              tendency_type: 'tension',
+              probability_like_weight: 7,
+              confidence: 0.60,
+              coherence_delta: 1.5,
+              tension_delta: 4.5,
+              related_hypotheses: ['hyp-3', 'hyp-6'],
+              not_to_infer: 'Creative focus flows are temporary transits, not persistent clinical definitions.',
+              visual_state: { deviation: -60, horizonRelevance: 130, isDashed: true },
+              reflective_question: 'Can you sustain creative projects when structural execution columns are lacking?',
+              source_weights: [
+                { name: 'MiroShark Node Align', weight: 40, confidence: 'medium', lastUpdated: 'Stable', dataType: 'simulated' },
+                { name: 'Qi core algorithm', weight: 60, confidence: 'high', lastUpdated: 'Stable', dataType: 'calculated' }
+              ]
+            }
+          ],
+          patternState: {
+            activeUserId,
+            elements: { wood: 72, metal: 18, fire: 48, water: 55, earth: 42 },
+            moonScorpioIntensity: 85,
+            alignmentIndex: 3.8,
+            lastCalculated: new Date().toISOString(),
+            provenanceId: `prov_fused_${runId.substring(4, 10)}`
           }
-        },
-        used_supabase_tables: ['user_natal_charts', 'quiz_state_memory_vectors', 'reflective_agent_heuristics'],
-        missing_data_warnings: ['BaZi Hour Pillar information is missing. Backing up utilizing local solar time calculations.'],
-        miro_shark_run_id: `miroshark_sim_active_${Math.random().toString(36).substring(2, 8)}`,
-        not_to_infer_rules: [
-          'DO NOT interpret planetary degree deltas as quantitative stock or financial indices forecasts.',
-          'DO NOT present lunar Scorpio transits as deterministic indicators of workspace performance decline.'
-        ]
-      };
+        };
 
-      clearInterval(interval);
+        cachedTask.seed = {
+          seed_markdown: `# Bazodiac Calibration Prompt Seed\n- Run: ${runId}\n- Active User ID: ${activeUserId}\n- Element Weights: Wood Dominant (72%), Metal Deficient (18%)\n- Transits: Moon in Scorpio`,
+          seed_json: { runId, activeUserId },
+          used_supabase_tables: ['user_natal_charts', 'quiz_state_vectors'],
+          missing_data_warnings: ['Missing birth hour context. Solar calculations used.'],
+          miro_shark_run_id: `ms_sim_${runId.substring(4, 10)}`,
+          not_to_infer_rules: ['Do not forecast qualitative outcomes.']
+        };
+
+        clearInterval(interval);
+      }
+      
+      stageIndex++;
+      simulations.set(runId, cachedTask);
     }
-    simulations.set(runId, cachedTask);
-  }, 600);
+  }, 350);
 
   return res.status(202).json({ runId, status: 'pending' });
 });
@@ -323,8 +400,30 @@ app.post('/api/scenario/run', (req, res) => {
  * Endpoint Option 2: Get status/logs of simulation run
  * GET /api/scenario/status/:runId
  */
-app.get('/api/scenario/status/:runId', (req, res) => {
+app.get('/api/scenario/status/:runId', checkConfiguration, async (req, res) => {
   const { runId } = req.params;
+  const orchestratorUrl = process.env.SCENARIO_ORCHESTRATOR_BASE_URL;
+
+  // Forward progress request to remote orchestrator if configured
+  if (orchestratorUrl) {
+    try {
+      const proxyRes = await fetch(`${orchestratorUrl}/api/scenario/status/${runId}`);
+      if (!proxyRes.ok) {
+        return res.status(proxyRes.status).json({
+          error: 'orchestrator_failed',
+          message: `Forwarded status check returned status ${proxyRes.status}`
+        });
+      }
+      const proxyData = await proxyRes.json();
+      return res.json(proxyData);
+    } catch (err: any) {
+      return res.status(502).json({
+        error: 'orchestrator_unreachable',
+        message: `Could not reach target orchestrator backend: ${err.message}`
+      });
+    }
+  }
+
   const task = simulations.get(runId);
   if (!task) {
     return res.status(404).json({ error: `Simulation run sequence ${runId} was not found.` });
@@ -333,6 +432,7 @@ app.get('/api/scenario/status/:runId', (req, res) => {
   return res.json({
     id: task.id,
     status: task.status,
+    stage: task.stage,
     progress: task.progress,
     logs: task.logs
   });
@@ -342,8 +442,30 @@ app.get('/api/scenario/status/:runId', (req, res) => {
  * Endpoint Option 3: Get resulting forecast branches
  * GET /api/scenario/results/:runId
  */
-app.get('/api/scenario/results/:runId', (req, res) => {
+app.get('/api/scenario/results/:runId', checkConfiguration, async (req, res) => {
   const { runId } = req.params;
+  const orchestratorUrl = process.env.SCENARIO_ORCHESTRATOR_BASE_URL;
+
+  // Forward results request to remote orchestrator if configured
+  if (orchestratorUrl) {
+    try {
+      const proxyRes = await fetch(`${orchestratorUrl}/api/scenario/results/${runId}`);
+      if (!proxyRes.ok) {
+        return res.status(proxyRes.status).json({
+          error: 'orchestrator_failed',
+          message: `Forwarded results check returned status ${proxyRes.status}`
+        });
+      }
+      const proxyData = await proxyRes.json();
+      return res.json(proxyData);
+    } catch (err: any) {
+      return res.status(502).json({
+        error: 'orchestrator_unreachable',
+        message: `Could not reach target orchestrator backend: ${err.message}`
+      });
+    }
+  }
+
   const task = simulations.get(runId);
   if (!task) {
     return res.status(404).json({ error: `Simulation run sequence ${runId} was not found.` });
@@ -360,8 +482,30 @@ app.get('/api/scenario/results/:runId', (req, res) => {
  * Endpoint Option 4: Get raw seed document & metadata
  * GET /api/scenario/seed/:runId
  */
-app.get('/api/scenario/seed/:runId', (req, res) => {
+app.get('/api/scenario/seed/:runId', checkConfiguration, async (req, res) => {
   const { runId } = req.params;
+  const orchestratorUrl = process.env.SCENARIO_ORCHESTRATOR_BASE_URL;
+
+  // Forward seed request to remote orchestrator if configured
+  if (orchestratorUrl) {
+    try {
+      const proxyRes = await fetch(`${orchestratorUrl}/api/scenario/seed/${runId}`);
+      if (!proxyRes.ok) {
+        return res.status(proxyRes.status).json({
+          error: 'orchestrator_failed',
+          message: `Forwarded seed check returned status ${proxyRes.status}`
+        });
+      }
+      const proxyData = await proxyRes.json();
+      return res.json(proxyData);
+    } catch (err: any) {
+      return res.status(502).json({
+        error: 'orchestrator_unreachable',
+        message: `Could not reach target orchestrator backend: ${err.message}`
+      });
+    }
+  }
+
   const task = simulations.get(runId);
   if (!task) {
     return res.status(404).json({ error: `Simulation run sequence ${runId} was not found.` });

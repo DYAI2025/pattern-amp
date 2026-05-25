@@ -255,68 +255,191 @@ Project Counterfactual branches fanning outward with specific probabilities base
         <div className="mt-4 pt-4 border-t border-slate-900 space-y-5 animate-fadeIn duration-200">
           
           {/* ================= CENTRALIZED PROVENANCE METADATA DECK ================= */}
-          <div className="p-4 bg-[#030508]/90 border border-slate-800 rounded-xl space-y-3 font-mono text-[11px] shadow-[inset_0_0_10px_rgba(0,0,0,0.8)]">
-            <h5 className="font-bold text-slate-200 border-b border-slate-900 pb-1.5 flex items-center gap-1.5 uppercase text-[10px] tracking-widest text-indigo-400">
-              <Database size={13} />
-              <span>CENTRALIZED PROVENANCE METADATA DECK</span>
-            </h5>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-2.5 leading-relaxed">
-              <div className="flex items-center justify-between border-b border-slate-900/60 pb-1">
-                <span className="text-slate-500 text-[10px] uppercase">Active User ID:</span>
-                <span className="text-slate-300 font-bold select-all">{activeUserId || 'guest_prototype_anonymous'}</span>
-              </div>
-              <div className="flex items-center justify-between border-b border-slate-900/60 pb-1">
-                <span className="text-slate-500 text-[10px] uppercase">PatternState ID:</span>
-                <span className="text-indigo-400 font-bold">{patternStateId || 'prov_fused_72_baseline_qi'}</span>
-              </div>
-              <div className="flex items-center justify-between border-b border-slate-900/60 pb-1">
-                <span className="text-slate-500 text-[10px] uppercase">Seed Document ID:</span>
-                <span className="text-indigo-300">{seedDocumentId || 'doc_seed_dynamic_baseline_v2'}</span>
-              </div>
-              <div className="flex items-center justify-between border-b border-slate-900/60 pb-1">
-                <span className="text-slate-500 text-[10px] uppercase">Scenario Run ID:</span>
-                <span className="text-cyan-400 font-bold">{scenarioRunId || 'no_active_run_id'}</span>
-              </div>
-              <div className="flex items-center justify-between border-b border-slate-900/60 pb-1">
-                <span className="text-slate-500 text-[10px] uppercase">MiroShark Project ID:</span>
-                <span className="text-slate-300">{miroSharkProjectId || 'proj_miro_default_align'}</span>
-              </div>
-              <div className="flex items-center justify-between border-b border-slate-900/60 pb-1">
-                <span className="text-slate-500 text-[10px] uppercase">MiroShark Graph Task ID:</span>
-                <span className="text-slate-300">{miroSharkGraphTaskId || 'tok_g_task_9122'}</span>
-              </div>
-              <div className="flex items-center justify-between border-b border-slate-900/60 pb-1">
-                <span className="text-slate-500 text-[10px] uppercase">MiroShark Simulation ID:</span>
-                <span className="text-slate-300">{miroSharkSimulationId || 'sim_empty_baseline'}</span>
-              </div>
-              <div className="flex items-center justify-between border-b border-slate-900/60 pb-1">
-                <span className="text-slate-500 text-[10px] uppercase">Status-Stufe:</span>
-                <span className={`font-bold uppercase ${statusLevel === 'completed' ? 'text-emerald-400' : 'text-amber-400 animate-pulse'}`}>{statusLevel || 'IDLE / PENDING_USER'}</span>
-              </div>
-              <div className="flex items-center justify-between border-b border-slate-900/60 pb-1">
-                <span className="text-slate-500 text-[10px] uppercase">Persistierte Branch-Anzahl:</span>
-                <span className="text-slate-300 text-[11px] font-bold">{persistedBranchCount !== null ? persistedBranchCount : branches.length}</span>
-              </div>
-              <div className="flex items-center justify-between border-b border-slate-900/60 pb-1">
-                <span className="text-slate-500 text-[10px] uppercase">Mock/Live Flag:</span>
-                <span className={`font-bold ${!isMock ? 'text-emerald-400' : 'text-slate-500'}`}>{!isMock ? 'LIVE ENDPOINT RUN' : 'MOCK PLAYGROUND'}</span>
+          <div className="p-4 bg-[#020407]/95 border border-slate-800 rounded-xl space-y-4 font-mono text-[11px] shadow-[inset_0_0_15px_rgba(0,0,0,0.9)]">
+            <div className="flex items-center justify-between border-b border-slate-900 pb-2 flex-wrap gap-2">
+              <h5 className="font-bold text-slate-200 flex items-center gap-1.5 uppercase text-[10px] tracking-widest text-[#22d3ee]">
+                <Database size={13} className="text-[#22d3ee]" />
+                <span>ARCHITECTURAL PROVENANCE & ONTOLOGY TRACE</span>
+              </h5>
+              <div className="text-[10px]">
+                {isMock ? (
+                  <span className="px-2 py-0.5 rounded bg-rose-950/40 text-rose-400 border border-rose-900/40 font-bold animate-pulse">
+                    ⚠️ UNCONFIGURED BACKEND (MOCK PLAYGROUND)
+                  </span>
+                ) : (
+                  <span className="px-2 py-0.5 rounded bg-emerald-950/40 text-emerald-400 border border-emerald-900/40 font-bold">
+                    ✓ ORCHESTRATOR LINK STABLE
+                  </span>
+                )}
               </div>
             </div>
-            {normalizerWarnings && normalizerWarnings.length > 0 ? (
-              <div className="pt-2 border-t border-slate-900 space-y-1 bg-amber-950/5 p-2 rounded border border-amber-900/10">
-                <span className="text-[10px] text-amber-500 font-bold uppercase tracking-wider block">Normalizer Warnings:</span>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              
+              {/* 1. User Context */}
+              <div className="p-2.5 bg-black/40 border border-slate-900 rounded-lg space-y-1">
+                <div className="flex items-center justify-between border-b border-slate-950 pb-1">
+                  <span className="text-[9.5px] font-bold text-slate-300 uppercase tracking-wider">1. User Context</span>
+                  <span className="text-[8.5px] px-1.5 rounded bg-amber-950/40 text-amber-400 font-bold uppercase border border-amber-900/30">OBSERVED</span>
+                </div>
+                <div className="flex justify-between items-center text-[10px] pt-1">
+                  <span className="text-slate-500">ID:</span>
+                  <span className="text-slate-300 font-mono truncate max-w-[150px] font-bold" title={activeUserId || 'guest_anonymous'}>
+                    {activeUserId || 'guest_anonymous_uuid'}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center text-[10px]">
+                  <span className="text-slate-500">Origin:</span>
+                  <span className="text-slate-400 text-[9px] uppercase">Session token header</span>
+                </div>
+              </div>
+
+              {/* 2. Supabase Sources */}
+              <div className="p-2.5 bg-black/40 border border-slate-900 rounded-lg space-y-1">
+                <div className="flex items-center justify-between border-b border-slate-950 pb-1">
+                  <span className="text-[9.5px] font-bold text-slate-300 uppercase tracking-wider">2. Supabase Sources</span>
+                  <span className={`text-[8.5px] px-1.5 rounded font-bold uppercase border ${isMock ? 'bg-amber-950/40 text-amber-400 border-amber-900/30' : 'bg-emerald-950/40 text-emerald-400 border-emerald-900/30'}`}>
+                    {isMock ? 'SIMULATED' : 'OBSERVED'}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center text-[10px] pt-1">
+                  <span className="text-slate-500">Tables:</span>
+                  <span className="text-[#818cf8] text-[9.5px]">natal_charts, state_vectors</span>
+                </div>
+                <div className="flex justify-between items-center text-[10px]">
+                  <span className="text-slate-500">Policy:</span>
+                  <span className="text-slate-400 text-[9px] uppercase">Row-Level Security (RLS)</span>
+                </div>
+              </div>
+
+              {/* 3. PatternState */}
+              <div className="p-2.5 bg-black/40 border border-slate-900 rounded-lg space-y-1">
+                <div className="flex items-center justify-between border-b border-slate-950 pb-1">
+                  <span className="text-[9.5px] font-bold text-slate-300 uppercase tracking-wider">3. PatternState</span>
+                  <span className="text-[8.5px] px-1.5 rounded bg-indigo-950/40 text-indigo-400 font-bold uppercase border border-indigo-900/30">CALCULATED</span>
+                </div>
+                <div className="flex justify-between items-center text-[10px] pt-1">
+                  <span className="text-slate-500">State ID:</span>
+                  <span className="text-indigo-400 font-semibold truncate max-w-[150px]">
+                    {patternStateId || 'prov_fused_72_baseline_qi'}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center text-[10px]">
+                  <span className="text-slate-500">Wu-Xing Vector:</span>
+                  <span className="text-slate-400 text-[9.5px]">[72, 18, 48, 55, 42]</span>
+                </div>
+              </div>
+
+              {/* 4. ScenarioSeed */}
+              <div className="p-2.5 bg-black/40 border border-slate-900 rounded-lg space-y-1">
+                <div className="flex items-center justify-between border-b border-slate-950 pb-1">
+                  <span className="text-[9.5px] font-bold text-slate-300 uppercase tracking-wider">4. ScenarioSeed</span>
+                  <span className="text-[8.5px] px-1.5 rounded bg-indigo-950/40 text-indigo-400 font-bold uppercase border border-indigo-900/30">CALCULATED</span>
+                </div>
+                <div className="flex justify-between items-center text-[10px] pt-1">
+                  <span className="text-slate-500">Document ID:</span>
+                  <span className="text-indigo-300 truncate max-w-[150px]">
+                    {seedDocumentId || 'doc_seed_dynamic_baseline_v2'}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center text-[10px]">
+                  <span className="text-slate-500">Boundary Logic:</span>
+                  <span className="text-emerald-400 text-[9px] uppercase">NOT-TO-INFER rules mapped</span>
+                </div>
+              </div>
+
+              {/* 5. MiroShark Trace */}
+              <div className="p-2.5 bg-black/40 border border-slate-900 rounded-lg space-y-1">
+                <div className="flex items-center justify-between border-b border-slate-950 pb-1">
+                  <span className="text-[9.5px] font-bold text-slate-300 uppercase tracking-wider">5. MiroShark Trace</span>
+                  <span className={`text-[8.5px] px-1.5 rounded font-bold uppercase border ${isMock ? 'bg-amber-950/40 text-amber-400 border-amber-900/30 animate-pulse' : 'bg-indigo-950/40 text-indigo-400 border-indigo-900/30'}`}>
+                    {isMock ? 'SIMULATED' : 'OBSERVED'}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center text-[10px] pt-1">
+                  <span className="text-slate-500">Simulation ID:</span>
+                  <span className="text-cyan-400 truncate max-w-[150px] font-bold">
+                    {miroSharkSimulationId || 'sim_empty_baseline'}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center text-[10px]">
+                  <span className="text-slate-500">Task Node:</span>
+                  <span className="text-slate-400 truncate max-w-[150px]">
+                    {miroSharkGraphTaskId || 'tok_g_task_9122'}
+                  </span>
+                </div>
+              </div>
+
+              {/* 6. Result Normalizer */}
+              <div className="p-2.5 bg-black/40 border border-slate-900 rounded-lg space-y-1">
+                <div className="flex items-center justify-between border-b border-slate-950 pb-1">
+                  <span className="text-[9.5px] font-bold text-slate-300 uppercase tracking-wider">6. Result Normalizer</span>
+                  <span className="text-[8.5px] px-1.5 rounded bg-indigo-950/40 text-indigo-400 font-bold uppercase border border-indigo-900/30">CALCULATED</span>
+                </div>
+                <div className="flex justify-between items-center text-[10px] pt-1">
+                  <span className="text-slate-500">Warnings:</span>
+                  <span className={normalizerWarnings && normalizerWarnings.length > 0 ? "text-amber-400" : "text-emerald-400 font-bold"}>
+                    {normalizerWarnings && normalizerWarnings.length > 0 ? `${normalizerWarnings.length} Warnings` : '✓ 0 Warnings'}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center text-[10px]">
+                  <span className="text-slate-500">Scrub Limit:</span>
+                  <span className="text-slate-400 text-[9px] uppercase">90-Day Trajectory Constraints</span>
+                </div>
+              </div>
+
+              {/* 7. Persistence */}
+              <div className="p-2.5 bg-black/40 border border-slate-900 rounded-lg space-y-1">
+                <div className="flex items-center justify-between border-b border-slate-950 pb-1">
+                  <span className="text-[9.5px] font-bold text-slate-300 uppercase tracking-wider">7. Persistence</span>
+                  <span className={`text-[8.5px] px-1.5 rounded font-bold uppercase border ${isMock ? 'bg-red-950/40 text-red-400 border-red-900/30' : 'bg-emerald-950/40 text-emerald-400 border-emerald-900/30'}`}>
+                    {isMock ? 'MISSING' : 'OBSERVED'}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center text-[10px] pt-1">
+                  <span className="text-slate-500">Run ID:</span>
+                  <span className="text-[#a855f7] font-semibold truncate max-w-[150px]">
+                    {scenarioRunId || 'no_active_run_id'}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center text-[10px]">
+                  <span className="text-slate-500">Live Write:</span>
+                  <span className={isMock ? "text-slate-500" : "text-emerald-400 font-bold"}>
+                    {isMock ? 'BYPASSED' : 'COMMITTED'}
+                  </span>
+                </div>
+              </div>
+
+              {/* 8. Not-to-infer */}
+              <div className="p-2.5 bg-black/40 border border-slate-900 rounded-lg space-y-1">
+                <div className="flex items-center justify-between border-b border-slate-950 pb-1">
+                  <span className="text-[9.5px] font-bold text-slate-300 uppercase tracking-wider">8. Not-to-infer</span>
+                  <span className="text-[8.5px] px-1.5 rounded bg-indigo-950/40 text-indigo-400 font-bold uppercase border border-indigo-900/30">CALCULATED</span>
+                </div>
+                <div className="flex justify-between items-center text-[10px] pt-1">
+                  <span className="text-slate-500">Safeguards:</span>
+                  <span className="text-rose-400 font-semibold uppercase text-[9px]">ENFORCED AT SOURCE</span>
+                </div>
+                <div className="flex justify-between items-center text-[10px]">
+                  <span className="text-slate-500">Projections:</span>
+                  <span className="text-slate-400 text-[9px]">SUB-COGNITIVE REFLECTION ONLY</span>
+                </div>
+              </div>
+
+            </div>
+
+            {normalizerWarnings && normalizerWarnings.length > 0 && (
+              <div className="pt-2.5 border-t border-slate-900 space-y-1 bg-amber-950/5 p-2 rounded border border-amber-900/10">
+                <span className="text-[10px] text-amber-500 font-bold uppercase tracking-wider block">Active Normalizer Alerts:</span>
                 <ul className="list-disc pl-4 space-y-0.5 text-[9.5px] text-slate-400">
                   {normalizerWarnings.map((warn, i) => (
                     <li key={i}>{warn}</li>
                   ))}
                 </ul>
               </div>
-            ) : (
-              <div className="pt-2 border-t border-slate-900 text-[10px] text-emerald-500">
-                ✓ Element patterns calibrated with zero normalizer warnings.
-              </div>
             )}
           </div>
+
           
           {/* ================= ACTIVE EPISTEMIC ALERT OVERLAY MODULE ================= */}
           {showEpistemicAlert && alertDetails && (

@@ -8,6 +8,8 @@ import { ScenarioBranch, Hypothesis, AgentReflection } from '../../types';
 import SourceContributionBars from './SourceContributionBars';
 import { AlertCircle, Eye, Compass, ShieldAlert, Sparkles, HelpCircle, ChevronRight, Activity } from 'lucide-react';
 
+import { RollingText } from '../ui/RollingText';
+
 interface BranchDetailPanelProps {
   selectedBranch: ScenarioBranch | null;
   relatedHypotheses: Hypothesis[];
@@ -101,8 +103,8 @@ export default function BranchDetailPanel({
             {Math.round(selectedBranch.confidence * 100)}% CONFIDENCE
           </span>
         </div>
-        <h3 className="text-base font-bold text-slate-100 mt-2 tracking-tight">
-          {selectedBranch.title}
+        <h3 className="text-base font-bold text-slate-100 mt-2 tracking-tight min-h-[1.5rem]">
+          <RollingText text={selectedBranch.title} />
         </h3>
         <p className="text-xs text-slate-405 text-slate-400 italic leading-relaxed">
           &ldquo;{selectedBranch.summary}&rdquo;

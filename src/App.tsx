@@ -52,6 +52,22 @@ import SupabaseManager from './components/scenario/SupabaseManager';
 import UserLoader from './components/scenario/UserLoader';
 import { UserPatternState } from './components/scenario/branchGrowthEngine';
 
+// API & Orchestration imports
+import { 
+  runScenario, 
+  getScenarioStatus, 
+  getScenarioResults, 
+  getScenarioSeed 
+} from './lib/api/scenarioClient';
+import { mapServerBranchesToUiBranches } from './lib/api/branchMapper';
+
+// Motion design system components
+import { RollingText } from './components/ui/RollingText';
+import { ScrollReveal } from './components/ui/ScrollReveal';
+import { StageRail } from './components/ui/StageRail';
+import { AuroraBackdrop } from './components/ui/AuroraBackdrop';
+import { ScenarioRunStage } from './lib/api/contracts';
+
 export default function App() {
   // Scenario & cockpit configuration State
   const [mode, setMode] = useState<ScenarioMode>('field');
@@ -92,6 +108,12 @@ export default function App() {
   const [normalizerWarnings, setNormalizerWarnings] = useState<string[] | null>(null);
   const [backendSeedData, setBackendSeedData] = useState<any | null>(null);
   const [simulationProgress, setSimulationProgress] = useState<number>(0);
+
+  // Integrated Scenario Orchestration Run States
+  const [runStage, setRunStage] = useState<ScenarioRunStage>('idle');
+  const [runProgress, setRunProgress] = useState<number>(0);
+  const [runError, setRunError] = useState<string | null>(null);
+  const [currentRunTrace, setCurrentRunTrace] = useState<any | null>(null);
 
   // Mappers translating raw Backend branches schema contract to UI schema contract
   const mapServerBranchToUiBranch = (server: any): ScenarioBranch => {
@@ -266,107 +288,117 @@ export default function App() {
   const [showExplainModal, setShowExplainModal] = useState(false);
   const [isExported, setIsExported] = useState(false);
 
-  // Handle Simulation
+  // Handle Simulation using scenarioClient proxy integrations
   const handleSimulateMiroShark = async () => {
-    setIsSimulating(true);
+    // Clear old result states before starting a new run
+    setActiveBranchList([]);
+    setSelectedBranchId(null);
+    setRunError(null);
     setSimulationProgress(0);
-    setSimulationLogs(["Contacting secure backend coordinator...", "Starting task run parameters check..."]);
-    
+    setRunProgress(0);
+    setIsSimulating(true);
+    setStatusLevel('pending');
+    setRunStage('initiating');
+
+    const targetUserId = activeUserId || 'guest_prototype_uuid_9102';
+    setSimulationLogs([
+      `[INITIATE] Inception parameters loaded for active user signature: ${targetUserId}`,
+      "Contacting secure backend coordinator for scenario run execution..."
+    ]);
+
     try {
-      // 1. Send run request with the current activeUserId
-      const runRes = await fetch('/api/scenario/run', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ activeUserId: activeUserId || 'guest-prototype-uuid-9102' })
-      });
-      
-      if (!runRes.ok) {
-        throw new Error(`Failed to initiate run session: ${runRes.statusText}`);
-      }
-      
-      const runData = await runRes.json();
-      const runId = runData.runId;
+      const runResult = await runScenario(targetUserId);
+      const runId = runResult.runId;
       setScenarioRunId(runId);
-      setStatusLevel('pending');
-      setMiroSharkSimulationId(`sim_active_${runId.substring(4, 10)}`);
-      
-      // 2. Poll progress status endpoint at regular structural frequencies
+      setRunStage('running');
+      setMiroSharkSimulationId(`sim_accel_${runId.substring(0, 6)}`);
+      setSimulationLogs(prev => [...prev, `[STARTED] Run ID persisted: ${runId}. Spinning status polling loop.`]);
+
       const pollInterval = setInterval(async () => {
         try {
-          const statusRes = await fetch(`/api/scenario/status/${runId}`);
-          if (!statusRes.ok) {
+          const statusObj = await getScenarioStatus(runId);
+          setSimulationLogs(statusObj.logs || []);
+          setSimulationProgress(statusObj.progress || 0);
+          setRunProgress(statusObj.progress || 0);
+          setRunStage((statusObj.stage as ScenarioRunStage) || 'running');
+          setStatusLevel(statusObj.status);
+
+          if (statusObj.status === 'completed') {
             clearInterval(pollInterval);
-            throw new Error(`Status check failed: ${statusRes.statusText}`);
-          }
-          const statusData = await statusRes.json();
-          
-          setSimulationLogs(statusData.logs || []);
-          setSimulationProgress(statusData.progress || 0);
-          setStatusLevel(statusData.status);
-          
-          if (statusData.status === 'completed') {
-            clearInterval(pollInterval);
-            
-            // 3. Obtain resolved branches results
-            const resultsRes = await fetch(`/api/scenario/results/${runId}`);
-            if (!resultsRes.ok) {
-              throw new Error(`Results download failed: ${resultsRes.statusText}`);
+            setSimulationLogs(prev => [...prev, "✓ Task node run complete. Fetching dynamic trajectories..."]);
+            setRunStage('completed');
+
+            // Download results and seed logs
+            const resultsData = await getScenarioResults(runId);
+            const seedObj = await getScenarioSeed(runId);
+
+            // Ingest raw seed schemas
+            setBackendSeedData(seedObj);
+            setSeedDocumentId(`doc_seed_${runId}`);
+            setPatternStateId(`prov_fused_72_${runId}`);
+
+            if (seedObj.missing_data_warnings) {
+              setNormalizerWarnings(seedObj.missing_data_warnings);
             }
-            const resultsData = await resultsRes.json();
-            
-            // 4. Ingest raw seed document and warning triggers
-            const seedRes = await fetch(`/api/scenario/seed/${runId}`);
-            if (seedRes.ok) {
-              const seedData = await seedRes.json();
-              setBackendSeedData(seedData);
-              setSeedDocumentId(`doc_seed_${runId}`);
-              setPatternStateId(`prov_fused_72_${runId}`);
-              
-              if (seedData.missing_data_warnings) {
-                setNormalizerWarnings(seedData.missing_data_warnings);
-              }
-              if (seedData.miro_shark_run_id) {
-                setMiroSharkProjectId('proj_miro_active_sprint');
-                setMiroSharkGraphTaskId(`tok_g_task_${runId.slice(-4)}`);
-                setMiroSharkSimulationId(seedData.miro_shark_run_id);
-              }
+            if (seedObj.miro_shark_run_id) {
+              setMiroSharkProjectId('proj_miro_active_sprint');
+              setMiroSharkGraphTaskId(`tok_g_task_${runId.slice(-4)}`);
+              setMiroSharkSimulationId(seedObj.miro_shark_run_id);
             }
-            
-            // Map raw server categories to validated local UI attributes
+
+            // Map and load the branches into active display list
             const uiBranches = mapServerBranchesToUiBranches(resultsData.branches);
             setActiveBranchList(uiBranches);
-            
-            // Re-render and recalibrate user patterns systems
+
+            // Calibrate pattern state
             if (resultsData.patternState) {
               setUserPatternState({
                 activeUserId: resultsData.patternState.activeUserId,
-                woodBalance: resultsData.patternState.elements.wood,
-                metalBalance: resultsData.patternState.elements.metal,
+                woodBalance: resultsData.patternState.elements?.wood ?? 50,
+                metalBalance: resultsData.patternState.elements?.metal ?? 50,
                 moonPhase: 'Scorpio Waning Aspect',
-                dailyCoherenceIndex: resultsData.patternState.alignmentIndex,
+                dailyCoherenceIndex: resultsData.patternState.alignmentIndex ?? 100,
                 isLiveValidated: true
               });
             }
-            
+
             setIsSimulating(false);
             if (uiBranches.length > 0) {
               setSelectedBranchId(uiBranches[0].id);
             }
-          } else if (statusData.status === 'failed') {
+          } else if (statusObj.status === 'failed') {
             clearInterval(pollInterval);
             setIsSimulating(false);
-            setSimulationLogs(prev => [...prev, '[CRITICAL ERROR] MiroShark target node run sequence aborted.']);
+            setRunStage('failed');
+            const errMsg = statusObj.error || "MiroShark target node run sequence aborted.";
+            setRunError(errMsg);
+            setSimulationLogs(prev => [
+              ...prev,
+              `[CRITICAL FAILURE] ${errMsg}`
+            ]);
           }
         } catch (pollErr: any) {
           clearInterval(pollInterval);
           setIsSimulating(false);
-          setSimulationLogs(prev => [...prev, `[CRITICAL ERROR] Ingestion exception: ${pollErr?.message || pollErr}`]);
+          setRunStage('failed');
+          const errMsg = pollErr?.message || String(pollErr);
+          setRunError(errMsg);
+          setSimulationLogs(prev => [
+            ...prev,
+            `[POLL EXCEPTION] Ingestion failure: ${errMsg}`
+          ]);
         }
       }, 700);
-      
+
     } catch (err: any) {
       setIsSimulating(false);
-      setSimulationLogs(prev => [...prev, `[CRITICAL ERROR] Failed to initialize simulation: ${err?.message || err}`]);
+      setRunStage('failed');
+      const errMsg = err?.message || String(err);
+      setRunError(errMsg);
+      setSimulationLogs(prev => [
+        ...prev,
+        `[CRITICAL INITIALIZE ABORT] Orchestration pipeline failed: ${errMsg}`
+      ]);
     }
   };
 
@@ -438,26 +470,29 @@ export default function App() {
   const relatedHypotheses = activeHypotheses.filter(h => relatedHypothesesIds.includes(h.id));
 
   return (
-    <div id="app" className="min-h-screen bg-brand-bg text-slate-300 flex flex-col antialiased selection:bg-indigo-500/30 selection:text-indigo-200 font-sans">
+    <div id="app" className="min-h-screen bg-[#03060b] text-slate-300 flex flex-col antialiased selection:bg-cyan-500/30 selection:text-cyan-200 font-sans relative overflow-hidden">
       
+      {/* Light atmospheric backdrop */}
+      <AuroraBackdrop radialIntensity={0.5} activeSignal={isSimulating} />
+
       {/* 1. TOP ANCHOR: COCKPIT CONTROL NAV BAR */}
-      <header className="border-b border-slate-800/50 bg-[#080a0f]/60 backdrop-blur-md sticky top-0 z-40 transition-all">
-        <div id="header-container" className="max-w-7xl mx-auto px-6 py-4 flex flex-col sm:flex-row items-center justify-between gap-3">
+      <header className="border-b border-slate-800/40 bg-[#06090e]/75 backdrop-blur-md sticky top-0 z-40 transition-all">
+        <div id="header-container" className="max-w-7xl mx-auto px-6 py-3.5 flex flex-col sm:flex-row items-center justify-between gap-3">
           <div className="flex items-center gap-4">
-            <div className="w-8 h-8 rounded-full border-2 border-indigo-500/50 flex items-center justify-center bg-indigo-500/10 relative">
-              <div className="absolute inset-0 rounded-full bg-indigo-500/10 animate-pulse"></div>
-              <Compass size={14} className="text-indigo-400 z-10" />
+            <div className="w-8 h-8 rounded-full border border-cyan-500/30 flex items-center justify-center bg-cyan-500/5 relative">
+              <div className="absolute inset-0 rounded-full bg-cyan-500/10 animate-pulse"></div>
+              <Compass size={14} className="text-cyan-400 z-10" />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h1 className="text-sm font-sans font-bold tracking-widest uppercase text-slate-100">
-                  Bazodiac Scenario Lab
+                <h1 className="text-sm font-sans font-bold tracking-widest uppercase text-slate-100 flex items-center min-h-[1.5rem]">
+                  <RollingText text="BAZODIAC SCENARIO LAB" />
                 </h1>
-                <span className="text-[9px] font-mono px-1.5 py-0.2 rounded-full border border-slate-800 bg-slate-900 text-slate-400 font-semibold uppercase">
+                <span className="text-[9px] font-mono px-1.5 py-0.2 rounded-full border border-cyan-950 bg-cyan-950/20 text-cyan-400 font-semibold uppercase">
                   v2.24 COCKPIT
                 </span>
               </div>
-              <p className="text-[10px] font-mono text-slate-500 leading-none mt-0.5 uppercase tracking-wider">
+              <p className="text-[10px] font-mono text-slate-500 leading-none mt-1.5 uppercase tracking-wider">
                 Reflective micro-scaffolding engine for calibrated pattern awareness
               </p>
             </div>
@@ -467,7 +502,7 @@ export default function App() {
             {/* Export trigger */}
             <button
               onClick={handleExportMarkdown}
-              className="p-1.5 px-3 rounded-full border border-slate-800 bg-slate-900 hover:bg-slate-850 text-slate-450 hover:text-white text-xs flex items-center gap-1.5 transition-colors border-slate-800/60"
+              className="p-1.5 px-3 rounded-full border border-slate-800 bg-[#070b12] hover:bg-slate-850 text-slate-405 hover:text-white text-xs flex items-center gap-1.5 transition-colors border-slate-800/60"
               title="Export Current Scenario Projections"
             >
               {isExported ? <Check size={13} className="text-emerald-400" /> : <Download size={13} />}
@@ -479,7 +514,7 @@ export default function App() {
 
 
       {/* 2. MAIN COCKPIT DASHBOARD: Responsive Three-Zone Layout */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 py-6 space-y-6">
+      <main className="flex-1 max-w-7xl w-full mx-auto px-4 py-6 space-y-6 relative z-10">
         
         {/* Connection health & indicators strip */}
         <EpistemicStatusStrip 
@@ -488,14 +523,21 @@ export default function App() {
           activeHypothesesCount={5}
         />
 
-        {/* Simulation loading spinner overlay */}
+        {/* Dynamic task orchestration Stage Rail */}
+        <StageRail 
+          currentStage={runStage} 
+          progress={runProgress} 
+          error={runError}
+        />
+
+        {/* Simulation logging spinner overlay */}
         {isSimulating && (
-          <div className="p-4 bg-indigo-950/25 border border-indigo-500/20 rounded-2xl flex items-center justify-between gap-4 text-xs font-mono">
+          <div className="p-4 bg-cyan-950/10 border border-cyan-500/20 rounded-2xl flex items-center justify-between gap-4 text-xs font-mono">
             <div className="flex items-center gap-3">
-              <RefreshCw size={14} className="animate-spin text-cyan-450 text-cyan-400" />
+              <RefreshCw size={14} className="animate-spin text-cyan-400" />
               <div className="space-y-0.5">
-                <span className="font-bold text-slate-200">MIROSHARK ENGINES ACTIVE...</span>
-                <p className="text-slate-450 text-slate-500 text-[10px] leading-none">Mapping counterfactual trajectories based on Wood-expansion curves</p>
+                <span className="font-bold text-slate-200">MIROSHARK LAB OVERWATCH RUNNING...</span>
+                <p className="text-slate-500 text-[10px] leading-none">Mapping counterfactual trajectories based on calibrated elements</p>
               </div>
             </div>
             <div className="text-right text-[10px] text-slate-500">
@@ -529,89 +571,102 @@ export default function App() {
           
           {/* ================= ZONE 1: LEFT CONTEXT RAIL (Profile, baseline & Hypotheses) ================= */}
           <section className="col-span-12 xl:col-span-3 lg:col-span-4 space-y-6 order-2 lg:order-1">
-            {/* Profile summary baseline */}
-            <NatalInfluenceOverlay influences={activeNatalInfluences} />
+            <ScrollReveal direction="left" delay={155}>
+              <div className="space-y-6">
+                {/* Profile summary baseline */}
+                <NatalInfluenceOverlay influences={activeNatalInfluences} />
 
-            {/* Constellation matrix working hypotheses */}
-            <SevenHypothesesConstellation 
-              hypotheses={activeHypotheses}
-              selectedBranchId={selectedBranchId}
-              selectedBranchHypothesesIds={relatedHypothesesIds}
-              selectedHypothesisId={selectedHypothesisId}
-              onSelectHypothesis={setSelectedHypothesisId}
-            />
+                {/* Constellation matrix working hypotheses */}
+                <SevenHypothesesConstellation 
+                  hypotheses={activeHypotheses}
+                  selectedBranchId={selectedBranchId}
+                  selectedBranchHypothesesIds={relatedHypothesesIds}
+                  selectedHypothesisId={selectedHypothesisId}
+                  onSelectHypothesis={setSelectedHypothesisId}
+                />
+              </div>
+            </ScrollReveal>
           </section>
 
           {/* ================= ZONE 2: CENTER CANVAS (Scenario Fan & Controls) ================= */}
           <section className="col-span-12 xl:col-span-5 lg:col-span-8 space-y-6 order-1 lg:order-2">
-            
-            {showAmplifier ? (
-              <PatternAmplifierView 
-                onSelectBranch={setSelectedBranchId}
-                selectedBranchId={selectedBranchId}
-                reducedMotion={reducedMotion}
-                externalPatternState={userPatternState}
-                onPatternStateChange={setUserPatternState}
-              />
-            ) : (
-              /* Scenic curved branches fan widget */
-              <ScenarioFan 
-                branches={activeBranchList}
-                selectedBranchId={selectedBranchId}
-                onSelectBranch={setSelectedBranchId}
-                symbolicMode={symbolicMode}
-                reducedMotion={reducedMotion}
-                mode={mode}
-                horizon={horizon}
-              />
-            )}
+            <ScrollReveal direction="fade" delay={100}>
+              <div className="space-y-6">
+                {showAmplifier ? (
+                  <PatternAmplifierView 
+                    onSelectBranch={setSelectedBranchId}
+                    selectedBranchId={selectedBranchId}
+                    reducedMotion={reducedMotion}
+                    externalPatternState={userPatternState}
+                    onPatternStateChange={setUserPatternState}
+                  />
+                ) : (
+                  /* Scenic curved branches fan widget */
+                  <ScenarioFan 
+                    branches={activeBranchList}
+                    selectedBranchId={selectedBranchId}
+                    onSelectBranch={setSelectedBranchId}
+                    symbolicMode={symbolicMode}
+                    reducedMotion={reducedMotion}
+                    mode={mode}
+                    horizon={horizon}
+                  />
+                )}
 
-            {/* Cockpit control sliders desk */}
-            <ScenarioControlPanel 
-              mode={mode}
-              setMode={setMode}
-              horizon={horizon}
-              setHorizon={setHorizon}
-              symbolicMode={symbolicMode}
-              setSymbolicMode={setSymbolicMode}
-              reducedMotion={reducedMotion}
-              setReducedMotion={setReducedMotion}
-              onSimulateRun={handleSimulateMiroShark}
-              isSimulating={isSimulating}
-              onToggleExplain={() => setShowExplainModal(true)}
-              userQuestion={userQuestion}
-              setUserQuestion={setUserQuestion}
-              onAskQuestion={handleAskQuestion}
-              showAmplifier={showAmplifier}
-              onToggleAmplifier={() => setShowAmplifier(!showAmplifier)}
-            />
+                {/* Cockpit control sliders desk */}
+                <ScenarioControlPanel 
+                  mode={mode}
+                  setMode={setMode}
+                  horizon={horizon}
+                  setHorizon={setHorizon}
+                  symbolicMode={symbolicMode}
+                  setSymbolicMode={setSymbolicMode}
+                  reducedMotion={reducedMotion}
+                  setReducedMotion={setReducedMotion}
+                  onSimulateRun={handleSimulateMiroShark}
+                  isSimulating={isSimulating}
+                  onToggleExplain={() => setShowExplainModal(true)}
+                  userQuestion={userQuestion}
+                  setUserQuestion={setUserQuestion}
+                  onAskQuestion={handleAskQuestion}
+                  showAmplifier={showAmplifier}
+                  onToggleAmplifier={() => setShowAmplifier(!showAmplifier)}
+                />
+              </div>
+            </ScrollReveal>
 
             {/* Prompt payload calculations seed */}
-            <ScenarioSeedPreview mode={mode} horizon={horizon} backendSeedData={backendSeedData} />
+            <ScrollReveal direction="up" delay={200}>
+              <ScenarioSeedPreview mode={mode} horizon={horizon} backendSeedData={backendSeedData} />
+            </ScrollReveal>
           </section>
 
           {/* ================= ZONE 3: RIGHT INTERPRETATION RAIL (Interpretation Details & Reflections) ================= */}
           <section className="col-span-12 xl:col-span-4 lg:col-span-12 space-y-6 order-3">
-            {/* Branch descriptive details (Exact model interpretive structure) */}
-            <BranchDetailPanel 
-              selectedBranch={selectedBranch}
-              relatedHypotheses={relatedHypotheses}
-              agentReflections={activeAgentReflections}
-              onSelectHypothesis={setSelectedHypothesisId}
-              onSelectAgent={setSelectedAgentId}
-              onAskEve={handleConsultEve}
-              onAskSkeptic={handleConsultSkeptic}
-            />
+            <ScrollReveal direction="right" delay={150}>
+              <div className="space-y-6">
+                {/* Branch descriptive details (Exact model interpretive structure) */}
+                <BranchDetailPanel 
+                  selectedBranch={selectedBranch}
+                  relatedHypotheses={relatedHypotheses}
+                  agentReflections={activeAgentReflections}
+                  onSelectHypothesis={setSelectedHypothesisId}
+                  onSelectAgent={setSelectedAgentId}
+                  onAskEve={handleConsultEve}
+                  onAskSkeptic={handleConsultSkeptic}
+                />
 
-            {/* Coherence field meters */}
-            <CoherenceField 
-              baselineCoherence={72}
-              currentCoherence={68}
-              selectedBranch={selectedBranch}
-            />
+                {/* Coherence field meters */}
+                <CoherenceField 
+                  baselineCoherence={72}
+                  currentCoherence={68}
+                  selectedBranch={selectedBranch}
+                />
 
-            {/* Calibration database memory tabs (Quiz vectors,observations,drifts) */}
-            <PatternMemoryPanel memory={MOCK_PATTERN_MEMORY} />
+                {/* Calibration database memory tabs (Quiz vectors,observations,drifts) */}
+                <PatternMemoryPanel memory={MOCK_PATTERN_MEMORY} />
+              </div>
+            </ScrollReveal>
           </section>
 
         </div>
