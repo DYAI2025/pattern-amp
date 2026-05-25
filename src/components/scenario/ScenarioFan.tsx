@@ -30,6 +30,7 @@ export default function ScenarioFan({
   const [hoveredBranchId, setHoveredBranchId] = useState<string | null>(null);
   const [activePulse, setActivePulse] = useState(true);
   const [showGlossary, setShowGlossary] = useState(false);
+  const [expandAll, setExpandAll] = useState(false);
 
   // Find the currently selected branch and determine its coherenceDelta rating
   const selectedBranch = selectedBranchId
@@ -103,8 +104,8 @@ export default function ScenarioFan({
           <span className="text-[10px] font-mono uppercase bg-indigo-505/10 bg-indigo-500/10 px-2 py-0.5 rounded text-indigo-400 border border-indigo-500/20 tracking-widest font-bold">
             {mode.toUpperCase()} MODE
           </span>
-          <div className="flex items-center gap-3 mt-2">
-            <h3 className="text-xs font-bold text-slate-100 uppercase tracking-widest">
+          <div className="flex flex-wrap items-center gap-2 mt-2">
+            <h3 className="text-xs font-bold text-slate-100 uppercase tracking-widest mr-1">
               Scenario Fan <span className="text-slate-500">|</span> {horizonText}
             </h3>
             <button
@@ -112,8 +113,16 @@ export default function ScenarioFan({
               className="p-1 px-2.5 rounded-full border border-slate-800/80 bg-slate-900/60 hover:bg-slate-850 text-slate-400 hover:text-white text-[9.5px] font-mono uppercase tracking-wider flex items-center gap-1 cursor-pointer transition-all"
               title="Understand Glyphs & Semantics"
             >
-              <HelpCircle size={10} className="text-indigo-405 text-indigo-400 animate-pulse" />
+              <HelpCircle size={10} className="text-indigo-400 animate-pulse" />
               <span>Glyph Key</span>
+            </button>
+            <button
+              onClick={() => setExpandAll(!expandAll)}
+              className={`p-1 px-2.5 rounded-full border ${expandAll ? 'bg-indigo-500/15 border-indigo-500/40 text-indigo-300' : 'border-slate-800/80 bg-slate-900/60 text-slate-400 hover:text-white hover:bg-slate-850'} text-[9.5px] font-mono uppercase tracking-wider flex items-center gap-1.5 cursor-pointer transition-all`}
+              title="Override selection & expand all branches at low opacity"
+            >
+              <span className={`w-1.5 h-1.5 rounded-full ${expandAll ? 'bg-indigo-400 animate-pulse' : 'bg-slate-500'}`}></span>
+              <span>Expand All Branches</span>
             </button>
           </div>
         </div>
@@ -186,6 +195,7 @@ export default function ScenarioFan({
             const colors = getTendencyColor(branch.tendencyType);
             const isSelected = selectedBranchId === branch.id;
             const isHovered = hoveredBranchId === branch.id;
+            const renderSelected = expandAll ? false : isSelected;
 
             // Mathematical calculation of curved paths
             // Using horizontal spacing by index
@@ -222,16 +232,18 @@ export default function ScenarioFan({
             const glyphY = (1 - t) ** 2 * startY + 2 * (1 - t) * t * ctrlY + t ** 2 * targetY;
 
             // Determine stroke attributes
-            const strokeWidth = (branch.probabilityWeight || 4) / 1.3 + (isHovered || isSelected ? 3 : 0);
-            const opacity = isSelected ? 1 : isHovered ? 0.9 : Math.max(0.15, branch.confidence);
+            const strokeWidth = (branch.probabilityWeight || 4) / 1.3 + (isHovered || renderSelected ? 3 : 0);
+            const opacity = expandAll 
+              ? (isHovered ? 0.45 : 0.22) 
+              : (isSelected ? 1 : isHovered ? 0.9 : Math.max(0.15, branch.confidence));
             const isMisty = branch.confidence < 0.5;
             
             // Filters based on tension and coherence
             let filterString = '';
             if (!reducedMotion) {
               if (isMisty) filterString = 'url(#fog-filter-light)';
-              if (branch.tensionDelta > 3) filterString = 'url(#tension-distortion)';
-              if (branch.coherenceDelta > 3 || isSelected) filterString = 'url(#coherence-glow)';
+              if (branch.tensionDelta > 3 && !expandAll) filterString = 'url(#tension-distortion)';
+              if ((branch.coherenceDelta > 3 || renderSelected) && !expandAll) filterString = 'url(#coherence-glow)';
             }
 
             return (
@@ -243,7 +255,7 @@ export default function ScenarioFan({
                 onMouseLeave={() => setHoveredBranchId(null)}
               >
                 {/* Secondary Red/Amber Tension Aura vibrating layered path */}
-                {branch.tensionDelta > 2.5 && !reducedMotion && (
+                {branch.tensionDelta > 2.5 && !reducedMotion && !expandAll && (
                   <path
                     d={`M ${startX},${startY} Q ${ctrlX},${ctrlY} ${targetX},${targetY}`}
                     fill="none"
@@ -272,7 +284,7 @@ export default function ScenarioFan({
                 />
 
                 {/* Selected branch outline / halo */}
-                {isSelected && (
+                {renderSelected && (
                   <path
                     d={`M ${startX},${startY} Q ${ctrlX},${ctrlY} ${targetX},${targetY}`}
                     fill="none"
@@ -296,14 +308,14 @@ export default function ScenarioFan({
                 )}
 
                 {/* GLYPH MARKERS OVER PATHS */}
-                {symbolicMode && (isHovered || isSelected || branch.confidence > 0.4) && (
+                {symbolicMode && (isHovered || renderSelected || (!expandAll && branch.confidence > 0.4)) && (
                   <g transform={`translate(${glyphX}, ${glyphY})`}>
                     {/* Ring representing source strength */}
                     <circle 
-                      r={10 + (isSelected ? 2 : 0)} 
+                      r={10 + (renderSelected ? 2 : 0)} 
                       fill="#0b1329" 
                       stroke={colors.stroke}
-                      strokeWidth={isSelected ? 2 : 1}
+                      strokeWidth={renderSelected ? 2 : 1}
                       className="transition-all"
                     />
                     <text
@@ -321,7 +333,7 @@ export default function ScenarioFan({
                 <circle 
                   cx={targetX} 
                   cy={targetY} 
-                  r={3 + (isSelected ? 2 : 0)} 
+                  r={3 + (renderSelected ? 2 : 0)} 
                   fill={colors.stroke} 
                   opacity={opacity}
                 />

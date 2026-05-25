@@ -236,6 +236,31 @@ export default function SevenHypothesesConstellation({
           onPointerUp={handlePointerUp}
           onPointerLeave={handlePointerUp}
         >
+          {/* Constellation Star Pulse Style Definition */}
+          <defs>
+            <style>{`
+              @keyframes star-pulse {
+                0% {
+                  transform: scale(1);
+                  opacity: 0.15;
+                }
+                50% {
+                  transform: scale(var(--pulse-scale, 1.25));
+                  opacity: 0.75;
+                }
+                100% {
+                  transform: scale(1);
+                  opacity: 0.15;
+                }
+              }
+              .star-pulse-element {
+                animation-name: star-pulse;
+                animation-iteration-count: infinite;
+                animation-timing-function: cubic-bezier(0.4, 0, 0.6, 1);
+              }
+            `}</style>
+          </defs>
+
           {/* Constellation Grid markings */}
           <g opacity="0.08" stroke="#ffffff" strokeWidth="0.5">
             <line x1={0} y1={80} x2={500} y2={80} />
@@ -253,6 +278,22 @@ export default function SevenHypothesesConstellation({
             if (!startNode || !endNode) return null;
 
             const isContradiction = link.type === 'contradicts';
+            const selectedHypothesisIndex = hypotheses.findIndex(h => h.id === selectedHypothesisId);
+            const hasSelection = selectedHypothesisIndex !== -1;
+            const isConnectedToSelected = hasSelection && (link.from === selectedHypothesisIndex || link.to === selectedHypothesisIndex);
+
+            // Dynamically highlight matching connections, dim other links if there is a selection
+            let linkStrokeWidth = isContradiction ? '1.5' : '1';
+            let linkOpacity = '0.35';
+            if (hasSelection) {
+              if (isConnectedToSelected) {
+                linkStrokeWidth = isContradiction ? '3' : '2.5';
+                linkOpacity = '0.95';
+              } else {
+                linkOpacity = '0.08';
+              }
+            }
+
             return (
               <line
                 key={idx}
@@ -261,9 +302,10 @@ export default function SevenHypothesesConstellation({
                 x2={endNode.x}
                 y2={endNode.y}
                 stroke={isContradiction ? '#f43f5e' : '#6366f1'}
-                strokeWidth={isContradiction ? '1.5' : '1'}
+                strokeWidth={linkStrokeWidth}
                 strokeDasharray={isContradiction ? '4 3' : undefined}
-                opacity="0.35"
+                opacity={linkOpacity}
+                className="transition-all duration-350 ease-out"
               />
             );
           })}
@@ -277,6 +319,15 @@ export default function SevenHypothesesConstellation({
             const size = 11 + (hyp.confidence / 20); // Confidence maps to star radius size
             const isLinkedBranch = selectedBranchHypothesesIds.includes(hyp.id);
 
+            const selectedHypothesisIndex = hypotheses.findIndex(h => h.id === selectedHypothesisId);
+            const hasSelection = selectedHypothesisIndex !== -1;
+            const isNodeRelated = !hasSelection || index === selectedHypothesisIndex || (
+              links.some(link => 
+                (link.from === index && link.to === selectedHypothesisIndex) || 
+                (link.from === selectedHypothesisIndex && link.to === index)
+              )
+            );
+
             // Activation levels maps to brightness/glow
             const brightnessStyle = hyp.activation > 75 
               ? 'fill-cyan-400' 
@@ -284,10 +335,14 @@ export default function SevenHypothesesConstellation({
               ? 'fill-sky-500' 
               : 'fill-slate-500';
 
+            const pulseScale = 1 + (hyp.activation / 100) * 0.45;
+            const pulseDuration = `${Math.max(1.0, 3.5 - (hyp.activation / 100) * 2.5)}s`;
+
             return (
               <g
                 key={hyp.id}
-                className="cursor-grab active:cursor-grabbing group select-none"
+                className="cursor-grab active:cursor-grabbing group select-none transition-opacity duration-350 ease-out"
+                style={{ opacity: hasSelection && !isNodeRelated ? 0.22 : 1.0 }}
                 onPointerDown={(e) => handlePointerDown(index, e)}
                 onClick={(e) => {
                   if (hasMovedRef.current) {
@@ -297,6 +352,22 @@ export default function SevenHypothesesConstellation({
                   onSelectHypothesis(isSelected ? null : hyp.id);
                 }}
               >
+                {/* Dynamically scaling & timing star pulse glow based on hypothesis activation */}
+                <circle
+                  cx={coord.x}
+                  cy={coord.y}
+                  r={size + 3}
+                  className="star-pulse-element fill-none"
+                  stroke={hyp.activation > 75 ? '#22d3ee' : hyp.activation > 45 ? '#0ea5e9' : '#334155'}
+                  strokeWidth="1.5"
+                  opacity={(hyp.activation / 100) * 0.6 + 0.15}
+                  style={{
+                    '--pulse-scale': pulseScale,
+                    animationDuration: pulseDuration,
+                    transformOrigin: `${coord.x}px ${coord.y}px`
+                  } as React.CSSProperties}
+                />
+
                 {/* Secondary highlight ring if linked to selected branch */}
                 {isLinkedBranch && (
                   <circle
