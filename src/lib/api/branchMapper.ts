@@ -34,31 +34,35 @@ export function mapServerBranchToUiBranch(server: ServerScenarioBranch): Scenari
     tendency = server.tendency_type as TendencyCategory;
   }
 
-  // Gracefully handle confidence missing or boundary problems
+  // Ensure confidence was returned authoritatively
   if (server.confidence === undefined || server.confidence === null) {
-    console.warn(`[MAPPER] Branch ${server.id} is missing a confidence score. Defaulting to low confidence.`, server);
+    console.warn(`[MAPPER_WARN] Branch ${server.id} lacks an authoritative backend confidence score. Mapping null.`);
   }
 
   return {
     id: server.id,
-    title: server.title || 'Untitled Projected Branch',
-    summary: server.summary || 'No summary compiled by MiroShark analytics.',
+    title: server.title || 'Untitled Branch',
+    summary: server.summary || 'Missing backend summary',
     tendencyType: tendency,
-    probabilityWeight: typeof server.probability_like_weight === 'number' ? Math.max(1, Math.min(10, server.probability_like_weight)) : 5,
-    confidence: typeof server.confidence === 'number' ? Math.max(0, Math.min(1, server.confidence)) : 0.5,
+    probabilityWeight: typeof server.probability_like_weight === 'number' ? Math.max(1, Math.min(10, server.probability_like_weight)) : 1,
+    confidence: typeof server.confidence === 'number' ? Math.max(0, Math.min(1, server.confidence)) : 0.0,
     horizonRelevance: typeof visual.horizonRelevance === 'number' ? visual.horizonRelevance : 100,
     deviation: typeof visual.deviation === 'number' ? visual.deviation : 0,
     coherenceDelta: typeof server.coherence_delta === 'number' ? server.coherence_delta : 0,
     tensionDelta: typeof server.tension_delta === 'number' ? server.tension_delta : 0,
     isDashed: !!visual.isDashed,
-    notToInfer: server.not_to_infer || 'Do not extrapolate server parameters beyond 90 days.',
-    reflectiveQuestion: server.reflective_question || 'How does this resonance align with your baseline energy matrix?',
-    whyAppears: server.why_appears || 'Appeared as a consequence of active BaZi element alignments.',
-    whatResonates: server.what_resonates || 'Resonates heavily key Scorpio transits in your third house.',
-    whereFriction: server.where_friction || 'Primary friction forms at high-volume coordination intersections.',
-    increaseCoherence: server.increase_coherence || 'Establish structured, quiet 45-minute focus intervals.',
+    notToInfer: server.not_to_infer || '',
+    reflectiveQuestion: server.reflective_question || '',
+    whyAppears: server.why_appears || '',
+    whatResonates: server.what_resonates || '',
+    whereFriction: server.where_friction || '',
+    increaseCoherence: server.increase_coherence || '',
     sources: Array.isArray(server.source_weights) ? server.source_weights : [],
-    relatedHypothesesIds: Array.isArray(server.related_hypotheses) ? server.related_hypotheses : []
+    relatedHypothesesIds: Array.isArray(server.related_hypotheses) ? server.related_hypotheses : [],
+    vectorPath3D: server.vector_path_3d,
+    parentId: server.parent_id,
+    depth: server.depth,
+    splitReason: server.split_reason
   };
 }
 

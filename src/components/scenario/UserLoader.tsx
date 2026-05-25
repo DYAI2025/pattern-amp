@@ -28,12 +28,14 @@ interface UserLoaderProps {
   onUserLoaded: (userData: any, patternState: UserPatternState | null) => void;
   activeUserId: string | null;
   onClearUser: () => void;
+  testLoaderEnabled?: boolean;
 }
 
 export default function UserLoader({
   onUserLoaded,
   activeUserId,
-  onClearUser
+  onClearUser,
+  testLoaderEnabled = true
 }: UserLoaderProps) {
   const [uuidInput, setUuidInput] = useState<string>('');
   const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -229,77 +231,101 @@ export default function UserLoader({
           </div>
 
           {/* User Input controls */}
-          <div className="flex flex-col md:flex-row items-stretch gap-2.5">
-            <div className="relative flex-1">
-              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-500">
-                <Search size={14} />
+          {!testLoaderEnabled ? (
+            <div className="p-4 bg-slate-950/85 rounded-xl border border-emerald-500/10 flex items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded-lg shrink-0">
+                  <Database size={15} />
+                </div>
+                <div>
+                  <div className="text-xs font-bold text-slate-200 uppercase tracking-widest flex items-center gap-1.5 font-mono">
+                    <CheckCircle2 size={12} className="text-emerald-400 animate-pulse" />
+                    <span>SECURE AUTH SESSION ACTIVE</span>
+                  </div>
+                  <p className="text-[10px] font-mono text-slate-500 uppercase mt-0.5 leading-none">
+                    Session User: <span className="text-emerald-400/80">{activeUserId ? `${activeUserId.substring(0, 8)}...${activeUserId.substring(activeUserId.length - 8)}` : 'AUTHORIZED_SYSTEM_CTX'}</span>
+                  </p>
+                </div>
               </div>
-              <input
-                id="test-user-id-input"
-                type="text"
-                placeholder="Paste Supabase user UUID here..."
-                value={uuidInput}
-                onChange={(e) => {
-                  setUuidInput(e.target.value);
-                  setInputError(null);
-                }}
-                disabled={isLoading}
-                className="w-full bg-[#020305] border border-slate-800 rounded-xl pl-9 pr-3 py-2.5 text-xs font-mono text-zinc-100 placeholder:text-zinc-650 focus:outline-none focus:border-indigo-505 transition-colors"
-              />
-            </div>
-
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => handleQueryUser(uuidInput)}
-                disabled={isLoading}
-                className="px-4 py-2.5 bg-rose-950/20 hover:bg-rose-900/40 border border-rose-500/20 rounded-xl text-xs font-mono font-bold uppercase tracking-wider text-rose-400 hover:text-rose-300 disabled:opacity-40 select-none flex items-center gap-1.5 transition-all w-full md:w-auto justify-center"
-              >
-                {isLoading ? (
-                  <>
-                    <Loader2 size={13} className="animate-spin" />
-                    <span>Loading Row Context...</span>
-                  </>
-                ) : (
-                  <>
-                    <Database size={13} />
-                    <span>Load User</span>
-                  </>
-                )}
-              </button>
-
-              {(activeUserId || uuidInput) && (
-                <button
-                  onClick={handleClear}
-                  className="p-2.5 bg-slate-900 border border-slate-800 hover:border-slate-705 text-slate-400 hover:text-slate-100 rounded-xl transition-all"
-                  title="Reset Prototype Context"
-                >
-                  <Trash2 size={14} />
-                </button>
-              )}
-            </div>
-          </div>
-
-          {/* Interactive sample list */}
-          {!activeUserId && !isLoading && (
-            <div className="border border-dashed border-slate-850 p-3 rounded-lg flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
-              <div className="text-[10px] font-mono text-slate-500 uppercase">
-                Don't have a UUID handy? Use prototype presets:
+              <div className="text-emerald-400 text-[10px] font-mono font-semibold bg-emerald-950/20 px-2 py-0.5 rounded border border-emerald-800/20 uppercase tracking-widest select-none">
+                LOCKED
               </div>
-              <div className="flex flex-wrap gap-1.5">
-                {SAMPLE_UUIDS.map(preset => (
-                  <button
-                    key={preset.value}
-                    onClick={() => {
-                      setUuidInput(preset.value);
-                      handleQueryUser(preset.value);
+            </div>
+          ) : (
+            <>
+              <div className="flex flex-col md:flex-row items-stretch gap-2.5">
+                <div className="relative flex-1">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-500">
+                    <Search size={14} />
+                  </div>
+                  <input
+                    id="test-user-id-input"
+                    type="text"
+                    placeholder="Paste Supabase user UUID here..."
+                    value={uuidInput}
+                    onChange={(e) => {
+                      setUuidInput(e.target.value);
+                      setInputError(null);
                     }}
-                    className="px-2 py-1 text-[9.5px] font-mono bg-slate-950 hover:bg-slate-900 border border-slate-850 rounded hover:text-slate-200 transition-colors"
+                    disabled={isLoading}
+                    className="w-full bg-[#020305] border border-slate-800 rounded-xl pl-9 pr-3 py-2.5 text-xs font-mono text-zinc-100 placeholder:text-zinc-650 focus:outline-none focus:border-indigo-505 transition-colors"
+                  />
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => handleQueryUser(uuidInput)}
+                    disabled={isLoading}
+                    className="px-4 py-2.5 bg-rose-950/20 hover:bg-rose-900/40 border border-rose-500/20 rounded-xl text-xs font-mono font-bold uppercase tracking-wider text-rose-400 hover:text-rose-300 disabled:opacity-40 select-none flex items-center gap-1.5 transition-all w-full md:w-auto justify-center"
                   >
-                    {preset.label}
+                    {isLoading ? (
+                      <>
+                        <Loader2 size={13} className="animate-spin" />
+                        <span>Loading Row Context...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Database size={13} />
+                        <span>Load User</span>
+                      </>
+                    )}
                   </button>
-                ))}
+
+                  {(activeUserId || uuidInput) && (
+                    <button
+                      onClick={handleClear}
+                      className="p-2.5 bg-slate-900 border border-slate-800 hover:border-slate-705 text-slate-400 hover:text-slate-100 rounded-xl transition-all"
+                      title="Reset Prototype Context"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  )}
+                </div>
               </div>
-            </div>
+
+              {/* Interactive sample list */}
+              {!activeUserId && !isLoading && (
+                <div className="border border-dashed border-slate-850 p-3 rounded-lg flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+                  <div className="text-[10px] font-mono text-slate-500 uppercase">
+                    Don't have a UUID handy? Use prototype presets:
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {SAMPLE_UUIDS.map(preset => (
+                      <button
+                        key={preset.value}
+                        onClick={() => {
+                          setUuidInput(preset.value);
+                          handleQueryUser(preset.value);
+                        }}
+                        className="px-2 py-1 text-[9.5px] font-mono bg-slate-950 hover:bg-slate-900 border border-slate-850 rounded hover:text-slate-200 transition-colors"
+                      >
+                        {preset.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
           )}
 
           {/* Validation / Request level errors */}

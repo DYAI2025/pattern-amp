@@ -57,7 +57,8 @@ import {
   runScenario, 
   getScenarioStatus, 
   getScenarioResults, 
-  getScenarioSeed 
+  getScenarioSeed,
+  getScenarioConfig
 } from './lib/api/scenarioClient';
 import { mapServerBranchesToUiBranches } from './lib/api/branchMapper';
 
@@ -115,41 +116,25 @@ export default function App() {
   const [runError, setRunError] = useState<string | null>(null);
   const [currentRunTrace, setCurrentRunTrace] = useState<any | null>(null);
 
-  // Mappers translating raw Backend branches schema contract to UI schema contract
-  const mapServerBranchToUiBranch = (server: any): ScenarioBranch => {
-    const visual = server.visual_state || {};
-    return {
-      id: server.id,
-      title: server.title,
-      summary: server.summary,
-      tendencyType: server.tendency_type || 'coherence',
-      probabilityWeight: server.probability_like_weight || 5,
-      confidence: server.confidence !== undefined ? server.confidence : 0.8,
-      horizonRelevance: visual.horizonRelevance || 100,
-      deviation: visual.deviation !== undefined ? visual.deviation : 0,
-      coherenceDelta: server.coherence_delta || 0,
-      tensionDelta: server.tension_delta || 0,
-      isDashed: !!visual.isDashed,
-      notToInfer: server.not_to_infer || 'No direct clinical boundaries calculated.',
-      reflectiveQuestion: server.reflective_question || 'What does this highlight inside your routine?',
-      whyAppears: server.why_appears || 'Appears due to elemental indicators.',
-      whatResonates: server.what_resonates || 'Resonates with target discipline parameters.',
-      whereFriction: server.where_friction || 'Tension lines detected across workspace coordinates.',
-      increaseCoherence: server.increase_coherence || 'Establish consistent workspace baseline habits.',
-      sources: Array.isArray(server.source_weights) 
-        ? server.source_weights 
-        : [
-            { name: 'Server Core Sync', weight: 50, confidence: 'high', lastUpdated: 'Stable', dataType: 'simulated' },
-            { name: 'Core Baseline transits', weight: 50, confidence: 'high', lastUpdated: 'Stable', dataType: 'calculated' }
-          ],
-      relatedHypothesesIds: Array.isArray(server.related_hypotheses) ? server.related_hypotheses : []
-    };
-  };
+  // Active environment configurations
+  const [testLoaderEnabled, setTestLoaderEnabled] = useState<boolean>(true);
+  const [backendMode, setBackendMode] = useState<string>('dev_mock');
 
-  const mapServerBranchesToUiBranches = (branches: any[]): ScenarioBranch[] => {
-    if (!Array.isArray(branches)) return [];
-    return branches.map(mapServerBranchToUiBranch);
-  };
+  // Load backend public config parameters on startup
+  React.useEffect(() => {
+    getScenarioConfig()
+      .then((cfg: any) => {
+        setTestLoaderEnabled(cfg.testLoaderEnabled);
+        setBackendMode(cfg.backendMode);
+        // If developer auth is active but loader disabled, prepare authorized system mock userID
+        if (!cfg.testLoaderEnabled && !activeUserId) {
+          handleUserLoaded({ activeUserId: 'f5d1e43e-a192-4112-be29-a1bfa98e4000' }, null);
+        }
+      })
+      .catch((err) => {
+        console.warn('[CONFIG] Failed fetching server orchestrator configurations. Defaulting.', err);
+      });
+  }, []);
 
   const handleUserLoaded = (userData: any, patternState: UserPatternState | null) => {
     setActiveUserId(userData.activeUserId);
@@ -307,10 +292,15 @@ export default function App() {
     ]);
 
     try {
-      const runResult = await runScenario(targetUserId);
+      const runResult = await runScenario({
+        activeUserId: targetUserId,
+        mode,
+        horizon,
+        question: userQuestion || undefined
+      });
       const runId = runResult.runId;
       setScenarioRunId(runId);
-      setRunStage('running');
+      setRunStage('miroshark_running');
       setMiroSharkSimulationId(`sim_accel_${runId.substring(0, 6)}`);
       setSimulationLogs(prev => [...prev, `[STARTED] Run ID persisted: ${runId}. Spinning status polling loop.`]);
 
@@ -551,6 +541,7 @@ export default function App() {
           onUserLoaded={handleUserLoaded}
           activeUserId={activeUserId}
           onClearUser={handleClearUser}
+          testLoaderEnabled={testLoaderEnabled}
         />
 
         {/* Supabase Dynamic Database Control Center (Gated behind Developer flag) */}

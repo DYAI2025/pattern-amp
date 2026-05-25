@@ -8,33 +8,71 @@ import {
   ScenarioRunResponse,
   ScenarioRunStatus,
   ScenarioResultsResponse,
-  ScenarioSeedResponse
+  ScenarioSeedResponse,
+  BackendMode
 } from './contracts';
 
 // Optional custom deployment URL, defaults to same-origin proxy
 const API_BASE = (import.meta as any).env?.VITE_SCENARIO_API_BASE || '';
 
+export interface ScenarioConfigResponse {
+  backendMode: BackendMode;
+  supabaseUrlConfigured: boolean;
+  testLoaderEnabled: boolean;
+  eveTableReadsEnabled: boolean;
+}
+
 /**
- * Initiates an advanced server-side multi-stage scenario calculation run.
+ * Retrieves safe, public configuration limits from the backend server.
+ */
+export async function getScenarioConfig(): Promise<ScenarioConfigResponse> {
+  const url = `${API_BASE}/api/scenario/config`;
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error('Could not retrieve safe public config variables.');
+  }
+  return response.json();
+}
+
+/**
+ * Initiates an advanced server-side multi-stage scenario calculation run with timeout boundaries.
  */
 export async function runScenario(request: ScenarioRunRequest): Promise<ScenarioRunResponse> {
   const url = `${API_BASE}/api/scenario/run`;
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(request)
-  });
+  
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 12000); // 12-second timeout
 
-  if (!response.ok) {
-    let errMsg = `Request failed: ${response.statusText}`;
-    try {
-      const errBody = await response.json();
-      if (errBody?.error) errMsg = errBody.error;
-    } catch (_) {}
-    throw new Error(errMsg);
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(request),
+      signal: controller.signal
+    });
+
+    clearTimeout(timeoutId);
+
+    if (!response.ok) {
+      let errMsg = `Request failed with HTTP status ${response.status}`;
+      try {
+        const errBody = await response.json();
+        if (errBody?.error) {
+          errMsg = errBody.error;
+          if (errBody.message) errMsg += `: ${errBody.message}`;
+        }
+      } catch (_) {}
+      throw new Error(errMsg);
+    }
+
+    return response.json();
+  } catch (err: any) {
+    clearTimeout(timeoutId);
+    if (err.name === 'AbortError') {
+      throw new Error('Connection timed out while initializing scenario run sequence.');
+    }
+    throw err;
   }
-
-  return response.json();
 }
 
 /**
@@ -96,12 +134,12 @@ export async function getScenarioSeed(runId: string): Promise<ScenarioSeedRespon
 
 /**
  * Attempts to cancel a queued or running simulation.
- * Backend-unsupported cancellation is simulated gracefully on the client.
+ * Returns unsupported as cancellation is not hardware-supported on the server.
  */
 export async function cancelScenarioRun(runId: string): Promise<{ success: boolean; message: string }> {
-  console.warn(`[API] Cancellation request sent for Run: ${runId}. Operation is not hardware-supported; execution is client-detached.`);
+  console.warn(`[API] Cancellation requested for Run: ${runId} is unsupported by the backend.`);
   return {
-    success: true,
-    message: 'Run detached from client interface. Thread will run to completion in container.'
+    success: false,
+    message: 'Operation is not supported by the underlying Scenario Orchestration hardware constraint.'
   };
 }

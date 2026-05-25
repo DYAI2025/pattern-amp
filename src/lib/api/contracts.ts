@@ -19,6 +19,43 @@ export type ScenarioRunStage =
   | 'completed'
   | 'failed';
 
+export type BackendMode = 'orchestrator' | 'local_miroshark' | 'dev_mock' | 'unconfigured';
+
+export interface Vector3D {
+  x: number;
+  y: number;
+  z: number;
+}
+
+export interface PatternIntersection {
+  id: string;
+  branch_ids: string[];
+  point_3d: Vector3D;
+  distance: number;
+  kind: 'friction' | 'harmony' | 'neutral';
+  coherence_delta: number;
+  tension_delta: number;
+  description: string;
+  source_support: string;
+  confidence: number;
+}
+
+export interface ScenarioDataSourceStatus {
+  tableName: string;
+  queryColumn: string;
+  rowCount: number;
+  status: 'success' | 'empty' | 'missing' | 'permission_error' | 'disabled';
+  error?: string;
+}
+
+export interface ScenarioRunTrace {
+  runId: string;
+  backendMode: BackendMode;
+  stagesPassed: ScenarioRunStage[];
+  supabase_table_status: Record<string, ScenarioDataSourceStatus>;
+  warnings: string[];
+}
+
 export interface ScenarioRunRequest {
   activeUserId: string;
   mode: string;
@@ -88,10 +125,16 @@ export interface ServerScenarioBranch {
   what_resonates?: string;
   where_friction?: string;
   increase_coherence?: string;
+  vector_path_3d?: Vector3D[];
+  parent_id?: string | null;
+  depth?: number;
+  split_reason?: string;
+  children?: ServerScenarioBranch[];
 }
 
 export interface ScenarioResultsResponse {
   branches: ServerScenarioBranch[];
+  intersections?: PatternIntersection[];
   patternState: {
     activeUserId: string;
     elements: {

@@ -46,6 +46,10 @@ export interface ScenarioBranch {
   increaseCoherence: string;
   sources: SourceContribution[];
   relatedHypothesesIds: string[];
+  vectorPath3D?: { x: number; y: number; z: number }[];
+  parentId?: string | null;
+  depth?: number;
+  splitReason?: string;
 }
 
 export type HypothesisStatus = 'active' | 'emerging' | 'weak' | 'contradicted';
