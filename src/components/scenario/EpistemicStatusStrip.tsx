@@ -4,7 +4,45 @@
  */
 
 import React from 'react';
-import { Network, BatteryCharging, CheckSquare, Zap, Activity, ShieldCheck } from 'lucide-react';
+import { Network, BatteryCharging, CheckSquare, Zap, Activity, ShieldCheck, Eye, Compass, Info } from 'lucide-react';
+
+export type EpistemicClass = 'calculated' | 'observed' | 'inferred' | 'simulated' | 'speculative' | 'excluded' | 'disabled';
+
+interface EpistemicTagProps {
+  type: EpistemicClass;
+  className?: string;
+}
+
+/**
+ * Universal Epistemic Tag component to display clear labels for data/interpretation provenance.
+ */
+export function EpistemicTag({ type, className = '' }: EpistemicTagProps) {
+  const styles = {
+    calculated: 'bg-purple-950/20 text-purple-400 border-purple-500/25 shadow-[0_0_4px_rgba(168,85,247,0.1)]',
+    observed: 'bg-emerald-950/20 text-emerald-400 border-emerald-500/25 shadow-[0_0_4px_rgba(16,185,129,0.1)]',
+    inferred: 'bg-sky-950/20 text-sky-400 border-sky-500/25 shadow-[0_0_4px_rgba(14,165,233,0.1)]',
+    simulated: 'bg-amber-950/20 text-amber-500 border-amber-500/25 shadow-[0_0_4px_rgba(245,158,11,0.1)]',
+    speculative: 'bg-indigo-950/20 text-indigo-400 border-indigo-500/25 shadow-[0_0_4px_rgba(99,102,241,0.1)]',
+    excluded: 'bg-slate-950/50 text-slate-500 border-slate-900 line-through opacity-60',
+    disabled: 'bg-slate-950/50 text-slate-500 border-slate-900 opacity-60'
+  }[type];
+
+  const labels = {
+    calculated: '✦ CALCULATED BASELINE',
+    observed: '✦ OBSERVED DATA',
+    inferred: '✦ INFERRED COGNITIVE',
+    simulated: '✦ SIMULATED PROJECTION',
+    speculative: '✦ SPECULATIVE PROBE',
+    excluded: '✦ EXCLUDED (QUIZ V1)',
+    disabled: '✦ DISABLED FOR V1'
+  }[type];
+
+  return (
+    <span className={`text-[9px] font-mono border px-2 py-0.5 rounded font-bold uppercase tracking-widest inline-flex items-center gap-1 shrink-0 ${styles} ${className}`}>
+      {labels}
+    </span>
+  );
+}
 
 interface EpistemicStatusStripProps {
   isMock: boolean;

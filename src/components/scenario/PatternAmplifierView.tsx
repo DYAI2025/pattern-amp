@@ -1010,7 +1010,7 @@ export default function PatternAmplifierView({
                   <g key={branch.id}>
                     {/* Layer 1: Tension alert pulsating vibe aura */}
                     {branch.tensionDelta > 2.8 && !parentReducedMotion && (
-                      <path
+                      <motion.path
                         d={dPath}
                         fill="none"
                         stroke="#f50035"
@@ -1018,11 +1018,14 @@ export default function PatternAmplifierView({
                         strokeLinecap="round"
                         opacity={0.18}
                         className="animate-pulse"
+                        initial={parentReducedMotion ? { pathLength: 1 } : { pathLength: 0 }}
+                        animate={parentReducedMotion ? { pathLength: 1 } : { pathLength: 1 }}
+                        transition={parentReducedMotion ? { duration: 0 } : { duration: 1.6, ease: "easeInOut", delay: 0.1 }}
                       />
                     )}
 
                     {/* Layer 2: Core branch spline path */}
-                    <path
+                    <motion.path
                       d={dPath}
                       fill="none"
                       stroke={visual.stroke}
@@ -1035,11 +1038,14 @@ export default function PatternAmplifierView({
                       onMouseMove={handleBranchHoverOn}
                       onMouseLeave={() => setHoveredBranch(null)}
                       onClick={handleBranchClick}
+                      initial={parentReducedMotion ? { pathLength: 1 } : { pathLength: 0 }}
+                      animate={parentReducedMotion ? { pathLength: 1 } : { pathLength: 1 }}
+                      transition={parentReducedMotion ? { duration: 0 } : { duration: 1.6, ease: "easeInOut", delay: 0.1 }}
                     />
 
                     {/* Selected path dashed halo indicator */}
                     {isSelected && (
-                      <path
+                      <motion.path
                         d={dPath}
                         fill="none"
                         stroke="#ffffff"
@@ -1047,6 +1053,9 @@ export default function PatternAmplifierView({
                         strokeDasharray="3 3"
                         opacity="0.9"
                         pointerEvents="none"
+                        initial={parentReducedMotion ? { pathLength: 1 } : { pathLength: 0 }}
+                        animate={parentReducedMotion ? { pathLength: 1 } : { pathLength: 1 }}
+                        transition={parentReducedMotion ? { duration: 0 } : { duration: 1.6, ease: "easeInOut", delay: 0.1 }}
                       />
                     )}
 
