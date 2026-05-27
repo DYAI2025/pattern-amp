@@ -3,9 +3,9 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Activity, ShieldAlert, Award, TrendingUp, Info, HelpCircle, Sparkles } from 'lucide-react';
-import { motion } from 'motion/react';
+import { motion, useAnimation } from 'motion/react';
 import { ScenarioBranch } from '../../types';
 
 interface CoherenceFieldProps {
@@ -21,12 +21,57 @@ export default function CoherenceField({
 }: CoherenceFieldProps) {
   const [isTechnical, setIsTechnical] = useState(false);
   const [showWhy, setShowWhy] = useState(false);
+  const [trajectory, setTrajectory] = useState<'rising' | 'falling' | 'stable'>('stable');
+  const controls = useAnimation();
+  const prevBranchRef = useRef<ScenarioBranch | null>(null);
+  const prevCoherenceRef = useRef<number | null>(null);
 
   // Compute calculated values
   const delta = selectedBranch ? selectedBranch.coherenceDelta : 0;
   const absDelta = Math.abs(delta);
   const projectedCoherence = currentCoherence + delta;
   const tensionLevel = selectedBranch ? selectedBranch.tensionDelta : 1.2;
+
+  // Trigger pulse animation and trajectory calculation on branch selection
+  useEffect(() => {
+    if (selectedBranch && prevBranchRef.current !== selectedBranch) {
+      if (prevCoherenceRef.current !== null) {
+        if (projectedCoherence > prevCoherenceRef.current) {
+          setTrajectory('rising');
+        } else if (projectedCoherence < prevCoherenceRef.current) {
+          setTrajectory('falling');
+        } else {
+          setTrajectory('stable');
+        }
+      } else {
+        setTrajectory('stable');
+      }
+
+      const isPositiveCoherenceShift = delta > 0;
+      const isTensionIncrease = tensionLevel > (prevBranchRef.current?.tensionDelta || 0);
+
+      if (isPositiveCoherenceShift) {
+        controls.start("pulseGreen");
+      } else if (isTensionIncrease) {
+        controls.start("pulseAmber");
+      }
+      
+      prevCoherenceRef.current = projectedCoherence;
+    }
+    prevBranchRef.current = selectedBranch;
+  }, [selectedBranch, projectedCoherence, delta, tensionLevel, controls]);
+
+  const containerVariants = {
+    initial: { backgroundColor: 'rgba(2, 6, 23, 0.8)' }, // base color
+    pulseGreen: {
+      backgroundColor: ['rgba(2, 6, 23, 0.8)', 'rgba(16, 185, 129, 0.2)', 'rgba(2, 6, 23, 0.8)'],
+      transition: { duration: 0.8 }
+    },
+    pulseAmber: {
+      backgroundColor: ['rgba(2, 6, 23, 0.8)', 'rgba(245, 158, 11, 0.2)', 'rgba(2, 6, 23, 0.8)'],
+      transition: { duration: 0.8 }
+    }
+  };
 
   // Visual text describing tension status
   const getTensionDescription = (t: number) => {
@@ -44,7 +89,13 @@ export default function CoherenceField({
   const projectedOffset = circumference - (projectedCoherence / 100) * circumference;
 
   return (
-    <div className="border border-slate-800 bg-slate-950/80 rounded-2xl p-5 backdrop-blur-md space-y-4">
+    <motion.div 
+      id="coherence-field-container"
+      variants={containerVariants}
+      initial="initial"
+      animate={controls}
+      className="border border-slate-800 bg-slate-950/80 rounded-2xl p-5 backdrop-blur-md space-y-4"
+    >
       {/* Header */}
       <div className="flex items-center justify-between border-b border-slate-900 pb-2.5 flex-wrap gap-2">
         <div className="flex items-center gap-1.5 flex-wrap">
@@ -172,6 +223,18 @@ export default function CoherenceField({
               strokeWidth="7"
             />
 
+            {/* Baseline History Marker */}
+            <circle
+              cx="50"
+              cy="50"
+              r="40"
+              className="stroke-slate-600 fill-none"
+              strokeWidth="8"
+              strokeDasharray="1 250"
+              strokeDashoffset={circumference - (baselineCoherence / 100) * circumference}
+              strokeLinecap="round"
+            />
+
             {/* Dynamic Active Path Glow Underlay (coaligned with loaded arc, intensifies with absDelta) */}
             <motion.circle
               cx="50"
@@ -246,8 +309,13 @@ export default function CoherenceField({
           {/* Inner ring score indicators */}
           <div className="absolute flex flex-col items-center text-center">
             <span className="text-[10px] uppercase font-mono text-slate-500 leading-none">FIELD</span>
-            <span className="text-lg font-mono font-bold text-slate-100 mt-0.5">
+            <span className="text-lg font-mono font-bold text-slate-100 mt-0.5 flex items-center gap-1">
               {projectedCoherence.toFixed(1)}%
+              {trajectory !== 'stable' && (
+                trajectory === 'rising' 
+                  ? <TrendingUp size={14} className="text-emerald-400" />
+                  : <TrendingUp size={14} className="text-rose-400 rotate-180" />
+              )}
             </span>
             {selectedBranch && (
               <span className={`text-[8.5px] font-mono leading-none ${delta >= 0 ? "text-emerald-400" : "text-rose-450 text-red-400"}`}>
@@ -308,6 +376,6 @@ export default function CoherenceField({
           Coherence is a symbolic/model-alignment signal in this prototype. It is not a clinical, psychological, or objective life score.
         </p>
       </div>
-    </div>
+    </motion.div>
   );
 }

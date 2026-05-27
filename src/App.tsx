@@ -36,6 +36,7 @@ import {
 } from './lib/supabase';
 
 // Component Imports
+import PatternAmpPage from './components/scenario/PatternAmpPage';
 import ScenarioFan from './components/scenario/ScenarioFan';
 import ScenarioControlPanel from './components/scenario/ScenarioControlPanel';
 import BranchDetailPanel from './components/scenario/BranchDetailPanel';
@@ -70,6 +71,8 @@ import { AuroraBackdrop } from './components/ui/AuroraBackdrop';
 import { ScenarioRunStage } from './lib/api/contracts';
 
 export default function App() {
+  const [view, setView] = useState<'dashboard' | 'patternAmp'>('dashboard');
+
   // Scenario & cockpit configuration State
   const [mode, setMode] = useState<ScenarioMode>('field');
   const [horizon, setHorizon] = useState<HorizonType>('7d');
@@ -473,18 +476,14 @@ export default function App() {
               <div className="absolute inset-0 rounded-full bg-cyan-500/10 animate-pulse"></div>
               <Compass size={14} className="text-cyan-400 z-10" />
             </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h1 className="text-sm font-sans font-bold tracking-widest uppercase text-slate-100 flex items-center min-h-[1.5rem]">
+            <div className="flex flex-col gap-1">
+               <nav className="flex items-center gap-2">
+                 <button onClick={() => setView('dashboard')} className={`text-[10px] font-bold uppercase tracking-wider ${view === 'dashboard' ? 'text-white' : 'text-slate-500'}`}>Dashboard</button>
+                 <button onClick={() => setView('patternAmp')} className={`text-[10px] font-bold uppercase tracking-wider ${view === 'patternAmp' ? 'text-white' : 'text-slate-500'}`}>Pattern Amp</button>
+               </nav>
+               <h1 className="text-xs font-sans font-bold tracking-widest uppercase text-slate-100 flex items-center min-h-[1.5rem]">
                   <RollingText text="BAZODIAC SCENARIO LAB" />
-                </h1>
-                <span className="text-[9px] font-mono px-1.5 py-0.2 rounded-full border border-cyan-950 bg-cyan-950/20 text-cyan-400 font-semibold uppercase">
-                  v2.24 COCKPIT
-                </span>
-              </div>
-              <p className="text-[10px] font-mono text-slate-500 leading-none mt-1.5 uppercase tracking-wider">
-                Reflective micro-scaffolding engine for calibrated pattern awareness
-              </p>
+               </h1>
             </div>
           </div>
 
@@ -505,13 +504,16 @@ export default function App() {
 
       {/* 2. MAIN COCKPIT DASHBOARD: Responsive Three-Zone Layout */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 py-6 space-y-6 relative z-10">
-        
-        {/* Connection health & indicators strip */}
-        <EpistemicStatusStrip 
-          isMock={!isSimulating && selectedBranchId !== 'br-custom'}
-          calibrationStrength="88% (High Calibration)"
-          activeHypothesesCount={5}
-        />
+        {view === 'patternAmp' ? (
+          <PatternAmpPage onExport={handleExportMarkdown} />
+        ) : (
+          <>
+          {/* Connection health & indicators strip */}
+          <EpistemicStatusStrip 
+            isMock={!isSimulating && selectedBranchId !== 'br-custom'}
+            calibrationStrength="88% (High Calibration)"
+            activeHypothesesCount={5}
+          />
 
         {/* Dynamic task orchestration Stage Rail */}
         <StageRail 
@@ -690,7 +692,8 @@ export default function App() {
           persistedBranchCount={activeBranchList.length}
           normalizerWarnings={normalizerWarnings}
         />
-
+        </>
+        )}
       </main>
 
       {/* Footer copyright */}
