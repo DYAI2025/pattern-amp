@@ -23,6 +23,27 @@ export interface ScenarioConfigResponse {
 }
 
 /**
+ * Loads the user's patterns and hypotheses data server-side in hypotheses_only mode.
+ */
+export async function loadSourceUser(activeUserId: string, mode: 'hypotheses_only' = 'hypotheses_only'): Promise<any> {
+  const url = `${API_BASE}/api/scenario/source-user`;
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ activeUserId, mode })
+  });
+  if (!response.ok) {
+    let errMsg = `Failed to load source user patterns: ${response.statusText}`;
+    try {
+      const errBody = await response.json();
+      if (errBody?.error) errMsg = errBody.error;
+    } catch (_) {}
+    throw new Error(errMsg);
+  }
+  return response.json();
+}
+
+/**
  * Retrieves safe, public configuration limits from the backend server.
  */
 export async function getScenarioConfig(): Promise<ScenarioConfigResponse> {

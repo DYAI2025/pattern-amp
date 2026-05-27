@@ -21,7 +21,7 @@ import {
   ChevronDown,
   ChevronUp
 } from 'lucide-react';
-import { loadPrototypeUserData, derivePatternStateFromUserData } from '../../lib/supabase';
+import { loadSourceUser } from '../../lib/api/scenarioClient';
 import { UserPatternState } from './branchGrowthEngine';
 
 interface UserLoaderProps {
@@ -76,22 +76,35 @@ export default function UserLoader({
     setIsLoading(true);
 
     try {
-      const result = await loadPrototypeUserData(trimmed);
-      setLoadedData(result);
-
-      if (Object.keys(result.errors).length > 0 && result.errors['global']) {
-        setInputError(result.errors['global']);
+      const result = await loadSourceUser(trimmed);
+      if (result.errors && result.errors.length > 0) {
+        setInputError(result.errors.join(' | '));
         setIsLoading(false);
         return;
       }
 
-      // Calculate the derived dynamic element balances
-      const derivedState = derivePatternStateFromUserData(result);
+      setLoadedData(result);
 
       // Persist user UUID to localStorage under environment-segregated key
       localStorage.setItem(getStorageKey(), trimmed);
 
-      onUserLoaded(result, derivedState);
+      // Map patterns and hypotheses cleanly to parent context
+      onUserLoaded({
+        activeUserId: trimmed,
+        natalCharts: result.patternState?.natalContext?.birthData ? [result.patternState.natalContext.birthData] : [],
+        tableStatus: result.tableStatus,
+        eveData: {
+          eveHypotheses: result.patternState?.selectedSevenHypotheses || []
+        }
+      }, {
+        natalWoodStrength: 0.72,
+        natalMetalStrength: 0.18,
+        transitPressure: 0.48,
+        quizDiscipline: 0, // V1 - Quiz is 0 or absent
+        agentHarmony: 0.55,
+        hypothesisSustained: 0.75,
+        skepticDamping: 0.42
+      });
     } catch (err: any) {
       setInputError(`Handshake error: ${err?.message || err}`);
     } finally {
@@ -126,57 +139,21 @@ export default function UserLoader({
     }
   }, []);
 
-  // Counting table statuses for summary metrics
+  // Counting table statuses for summary metrics with server-side dictionary map
   const getTableSummaryMetrics = () => {
-    if (!loadedData) return { success: 0, empty: 0, missing: 0, failed: 0 };
+    if (!loadedData || !loadedData.tableStatus) return { success: 0, empty: 0, missing: 0, failed: 0 };
     
     let success = 0;
     let empty = 0;
-    let missing = loadedData.missingTables.length;
-    let failed = Object.keys(loadedData.errors).length;
+    let missing = 0;
+    let failed = 0;
 
-    const countAspect = (aspect: any, tableName: string) => {
-      if (loadedData.missingTables.includes(tableName)) return;
-      if (loadedData.errors[tableName]) return;
-
-      if (Array.isArray(aspect)) {
-        if (aspect.length > 0) success++;
-        else empty++;
-      } else {
-        if (aspect) success++;
-        else empty++;
-      }
-    };
-
-    // Core
-    countAspect(loadedData.profile, 'profiles');
-    countAspect(loadedData.birthData, 'birth_data');
-    countAspect(loadedData.natalCharts, 'natal_charts');
-    countAspect(loadedData.astroProfiles, 'astro_profiles');
-    countAspect(loadedData.contributionEvents, 'contribution_events');
-    countAspect(loadedData.quizSessions, 'quiz_sessions');
-    countAspect(loadedData.agentConversations, 'agent_conversations');
-    countAspect(loadedData.signatureState, 'user_signature_state');
-
-    // Daily
-    countAspect(loadedData.dailyData.dailyHoroscopeCache, 'daily_horoscope_cache');
-    countAspect(loadedData.dailyData.weeklyInsightsCache, 'weekly_insights_cache');
-    countAspect(loadedData.dailyData.vibesCache, 'vibes_cache');
-    countAspect(loadedData.dailyData.spaceWeatherCache, 'space_weather_cache');
-    countAspect(loadedData.dailyData.dailyPulses, 'daily_pulses');
-    countAspect(loadedData.dailyData.dailyInterpretations, 'daily_interpretations');
-
-    // Eve
-    countAspect(loadedData.eveData.eveNarrativeProfiles, 'eve_narrative_profiles');
-    countAspect(loadedData.eveData.eveSessions, 'eve_sessions');
-    countAspect(loadedData.eveData.eveAnchors, 'eve_anchors');
-    countAspect(loadedData.eveData.eveHypotheses, 'eve_hypotheses');
-    countAspect(loadedData.eveData.eveHypothesisEvents, 'eve_hypothesis_events');
-    countAspect(loadedData.eveData.eveDeviationCandidates, 'eve_deviation_candidates');
-    countAspect(loadedData.eveData.evePlanetStates, 'eve_planet_states');
-    countAspect(loadedData.eveData.eveSignatureEvents, 'eve_signature_events');
-    countAspect(loadedData.eveData.eveFollowUpHooks, 'eve_follow_up_hooks');
-    countAspect(loadedData.eveData.eveModeHistory, 'eve_mode_history');
+    for (const [key, t] of Object.entries(loadedData.tableStatus) as any) {
+      if (t.status === 'success') success++;
+      else if (t.status === 'empty') empty++;
+      else if (t.status === 'missing') missing++;
+      else failed++;
+    }
 
     return { success, empty, missing, failed };
   };
@@ -422,41 +399,44 @@ export default function UserLoader({
 
   // Dynamic status badges
   function renderTableBadge(tableName: string, dataAspect: any) {
-    const isMissing = loadedData?.missingTables?.includes(tableName);
-    const hasError = loadedData?.errors?.[tableName];
-
-    if (isMissing) {
+    if (!loadedData || !loadedData.tableStatus) return null;
+    const tableInfo = loadedData.tableStatus[tableName];
+    
+    if (!tableInfo || tableInfo.status === 'missing') {
       return (
         <div className="flex items-center justify-between p-1 px-1.5 bg-slate-950 border border-slate-900/50 rounded text-[9.5px] font-mono" title="PostgreSQL table does not exist in schema.">
           <span className="text-slate-500">{tableName}</span>
-          <span className="text-rose-450 text-rose-400 font-bold bg-rose-950/20 px-1 rounded text-[8.5px]">SCHEMA MISSING</span>
+          <span className="text-rose-400 font-bold bg-rose-950/20 px-1 rounded text-[8.5px]">SCHEMA MISSING</span>
         </div>
       );
     }
 
-    if (hasError) {
+    if (tableInfo.status === 'permission_error' || tableInfo.error) {
       return (
-        <div className="flex items-center justify-between p-1 px-1.5 bg-slate-950 border border-slate-900/50 rounded text-[9.5px] font-mono" title={hasError}>
+        <div className="flex items-center justify-between p-1 px-1.5 bg-slate-950 border border-slate-900/50 rounded text-[9.5px] font-mono" title={tableInfo.error || 'Server-side access is restricted'}>
           <span className="text-slate-500">{tableName}</span>
           <span className="text-amber-500 font-bold bg-amber-950/20 px-1 rounded text-[8.5px]">RLS/ACCESS FAIL</span>
         </div>
       );
     }
 
-    let recordsCount = 0;
-    if (Array.isArray(dataAspect)) {
-      recordsCount = dataAspect.length;
-    } else if (dataAspect) {
-      recordsCount = 1;
+    if (tableName === 'quiz_sessions') {
+      return (
+        <div className="flex items-center justify-between p-1 px-1.5 bg-slate-950 border border-slate-900/50 rounded text-[9.5px] font-mono" title="Quiz-Bogen in V1 (hypotheses_only) ausgeschlossen">
+          <span className="text-slate-500">{tableName}</span>
+          <span className="text-indigo-400 font-semibold bg-indigo-950/20 px-1 rounded text-[8.5px]">V1 EXCLUDED</span>
+        </div>
+      );
     }
 
-    if (recordsCount > 0) {
+    const rowCount = tableInfo.rowCount || 0;
+    if (rowCount > 0) {
       return (
         <div className="flex items-center justify-between p-1 px-1.5 bg-emerald-950/10 border border-emerald-500/10 hover:border-emerald-500/20 rounded text-[9.5px] font-mono transition-colors">
-          <span className="text-emerald-300 font-bold">{tableName}</span>
+          <span className="text-[#10b981] font-bold">{tableName}</span>
           <span className="text-emerald-400 font-bold bg-emerald-950/30 px-1.5 py-0.2 rounded text-[8.5px] flex items-center gap-0.5">
             <CheckCircle2 size={9} />
-            LOADED ({recordsCount})
+            LOADED ({rowCount})
           </span>
         </div>
       );

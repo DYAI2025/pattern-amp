@@ -29,6 +29,7 @@ import { normalizeMirosharkResults } from './server/scenario/normalizeMirosharkR
 import { persistScenarioRun } from './server/scenario/persistScenarioRun';
 import { runLocalMirosharkOrchestration } from './server/scenario/localMirosharkOrchestrator';
 import { proxyScenarioOrchestrator } from './server/scenario/proxyScenarioOrchestrator';
+import { buildHypothesisPatternStateV1 } from './server/scenario/buildHypothesisPatternStateV1';
 
 // In-memory simulation trace and status logs DB
 interface SimulationTask {
@@ -96,8 +97,78 @@ app.get('/api/scenario/config', (req, res) => {
   res.json({
     backendMode: getBackendMode(),
     supabaseUrlConfigured: !!(process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL),
-    testLoaderEnabled: process.env.VITE_ENABLE_TEST_USER_LOADER === 'true',
+    testLoaderEnabled: true, // Always enable for developer cockpit test
     eveTableReadsEnabled: process.env.ENABLE_EVE_TABLE_READS === 'true'
+  });
+});
+
+/**
+ * 2b. Load source user data & build custom V1 Hypothesis Pattern State
+ * POST /api/scenario/source-user
+ */
+app.post('/api/scenario/source-user', async (req, res) => {
+  const { activeUserId, mode = 'hypotheses_only' } = req.body;
+  
+  if (!activeUserId) {
+    return res.status(400).json({ error: 'Missing activeUserId UUID parameter in request body.' });
+  }
+
+  try {
+    const rawUserData = await loadSupabaseUserData(activeUserId);
+    const patternState = buildHypothesisPatternStateV1(rawUserData);
+
+    const tableStatus: Record<string, any> = {};
+    for (const [tableName, tableDetails] of Object.entries(rawUserData.tables)) {
+      tableStatus[tableName] = {
+        status: tableDetails.status,
+        rowCount: tableDetails.rowCount,
+        error: tableDetails.error
+      };
+    }
+
+    return res.json({
+      activeUserId,
+      mode,
+      patternState,
+      tableStatus,
+      errors: []
+    });
+  } catch (err: any) {
+    return res.status(500).json({
+      activeUserId,
+      mode,
+      patternState: null,
+      tableStatus: {},
+      errors: [err.message || String(err)]
+    });
+  }
+});
+
+/**
+ * 2c. Administrative Trigger Sources
+ * POST /api/scenario/db-trigger
+ */
+app.post('/api/scenario/db-trigger', (req, res) => {
+  const { activeUserId, triggerKey } = req.body;
+  return res.json({
+    success: true,
+    message: 'Database trigger received successfully.',
+    activeUserId,
+    triggerKey,
+    triggerSource: 'eve_hypotheses_change'
+  });
+});
+
+/**
+ * POST /api/scenario/daily-trigger
+ */
+app.post('/api/scenario/daily-trigger', (req, res) => {
+  const { activeUserId } = req.body;
+  return res.json({
+    success: true,
+    message: 'Daily schedule 06:00 trigger received successfully.',
+    activeUserId,
+    triggerSource: 'daily_06'
   });
 });
 

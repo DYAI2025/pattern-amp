@@ -84,7 +84,7 @@ export function normalizeMirosharkResults(
       source_weights: [
         { name: 'MiroShark Node Align', weight: 50, confidence: 'high', lastUpdated: 'Stable', dataType: 'simulated' },
         { name: 'Natal Western charts', weight: 30, confidence: 'high', lastUpdated: 'Stable', dataType: 'calculated' },
-        { name: 'User quiz scores', weight: 20, confidence: 'medium', lastUpdated: '2 hours ago', dataType: 'observed' }
+        { name: 'Eve Hypotheses V1', weight: 20, confidence: 'high', lastUpdated: 'Just now', dataType: 'observed' }
       ],
       // Backend fields for 3D paths and hierarchy
       vector_path_3d: path1 as any,
